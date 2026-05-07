@@ -7,6 +7,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -19,12 +20,17 @@ jobs:
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
-      # এখানে gradle-version দেওয়ার দরকার নেই, এটি অটোমেটিক আপনার প্রোজেক্টের ভার্সন নিয়ে নেবে।
+      with:
+        gradle-version: '8.2'
+
+    - name: Fix broken wrapper
+      run: |
+        rm -f gradlew
+        rm -rf gradle/wrapper/gradle-wrapper.jar
+        gradle wrapper --gradle-version 8.2
 
     - name: Build Debug APK
-      run: |
-        chmod +x gradlew
-        ./gradlew assembleDebug
+      run: ./gradlew assembleDebug --stacktrace --info
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
