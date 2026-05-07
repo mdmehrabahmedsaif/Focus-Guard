@@ -1,6 +1,7 @@
 package com.focusguard.app;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.widget.Toast;
 import android.view.accessibility.AccessibilityEvent;
@@ -166,18 +167,29 @@ public class BlockerService extends AccessibilityService {
         return text != null && text.toLowerCase().contains(SERVICE_LABEL_LOWER);
     }
 
-    /** Perform BACK with self-protection cooldown (250 ms) and show Toast. */
+    /** Launches the BlockActivity to show a "Window" and also kicks to Home screen. */
     private void kickOut() {
         long now = System.currentTimeMillis();
         if (now - lastSelfProtTime > SELF_PROT_COOLDOWN) {
             lastSelfProtTime = now;
             
-            // Show a feedback toast (optional but good for debugging)
-            if (lastToast != null) lastToast.cancel();
-            lastToast = Toast.makeText(this, "🛡️ FocusGuard: Settings Protected", Toast.LENGTH_SHORT);
-            lastToast.show();
+            // 1. Show the "Blocking Window" Activity
+            try {
+                Intent intent = new Intent(this, BlockActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(intent);
+            } catch (Exception e) {
+                // Fallback to back action if activity fails to start
+                performGlobalAction(GLOBAL_ACTION_BACK);
+            }
 
-            performGlobalAction(GLOBAL_ACTION_BACK);
+            // 2. Also perform HOME action for extra punch
+            performGlobalAction(GLOBAL_ACTION_HOME);
+            
+            // 3. Show a feedback toast
+            if (lastToast != null) lastToast.cancel();
+            lastToast = Toast.makeText(this, "🛡️ FocusGuard Protected", Toast.LENGTH_SHORT);
+            lastToast.show();
         }
     }
 
