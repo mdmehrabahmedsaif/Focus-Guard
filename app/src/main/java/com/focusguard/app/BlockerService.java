@@ -59,13 +59,12 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String packageName = pkg.toString();
 
-        // SELF-PROTECTION (Bulletproof Version):
-        // We scan for our unique description string in EVERY app except our own.
-        // This makes it immune to package-name changes across different phone brands.
-        if (prefs.getBoolean("block_accessibility", false)) {
-            if (!packageName.equals(getPackageName())) {
-                selfProtect(event);
-            }
+        // SELF-PROTECTION:
+        // Trigger if either Accessibility or Device Admin protection is ON.
+        boolean blockAcc = prefs.getBoolean("block_accessibility", false);
+        boolean blockAdm = prefs.getBoolean("block_device_admin", false);
+        if ((blockAcc || blockAdm) && !packageName.equals(getPackageName())) {
+            selfProtect(event);
         }
 
         int type = event.getEventType();
@@ -115,9 +114,45 @@ public class BlockerService extends AccessibilityService {
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return;
 
-        // Match by unique description string
-        if (eventTextContainsDescription(event) || rootContainsDescription()) {
-            kickOut();
+        // Check Accessibility Detail Page (via Description)
+        if (prefs.getBoolean("block_accessibility", false)) {
+            if (eventTextContainsDescription(event) || rootContainsDescription()) {
+                kickOut();
+                return;
+            }
+        }
+
+        // Check Device Admin Page (via Label + Context)
+        if (prefs.getBoolean("block_device_admin", false)) {
+            if (rootContainsAdminContext()) {
+                kickOut();
+            }
+        }
+    }
+
+    private boolean rootContainsAdminContext() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        try {
+            // Find our app name first
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+            if (hits != null && !hits.isEmpty()) {
+                // If we find FocusGuard, check if we are on an admin-related page
+                // Look for common admin keywords
+                String[] adminKeywords = {"Deactivate", "admin app", "device admin"};
+                for (String kw : adminKeywords) {
+                    List<AccessibilityNodeInfo> contextHits = root.findAccessibilityNodeInfosByText(kw);
+                    if (contextHits != null && !contextHits.isEmpty()) {
+                        for (AccessibilityNodeInfo n : hits) n.recycle();
+                        for (AccessibilityNodeInfo n : contextHits) n.recycle();
+                        return true;
+                    }
+                }
+                for (AccessibilityNodeInfo n : hits) n.recycle();
+            }
+            return false;
+        } finally {
+            root.recycle();
         }
     }
 

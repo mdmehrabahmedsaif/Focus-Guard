@@ -31,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
     private SwitchCompat switchYouTube;
     private SwitchCompat switchInstagram;
     private SwitchCompat switchBlockAccessibility;
+    private SwitchCompat switchBlockDeviceAdmin;
 
     private static final int REQUEST_ENABLE_ADMIN = 101;
 
@@ -53,12 +54,14 @@ public class MainActivity extends AppCompatActivity {
         switchYouTube             = findViewById(R.id.switchYouTube);
         switchInstagram           = findViewById(R.id.switchInstagram);
         switchBlockAccessibility  = findViewById(R.id.switchBlockAccessibility);
+        switchBlockDeviceAdmin     = findViewById(R.id.switchBlockDeviceAdmin);
 
         // Load saved settings
         switchWhatsApp.setChecked(prefs.getBoolean("block_whatsapp", true));
         switchYouTube.setChecked(prefs.getBoolean("block_youtube", true));
         switchInstagram.setChecked(prefs.getBoolean("block_instagram", true));
         switchBlockAccessibility.setChecked(prefs.getBoolean("block_accessibility", false));
+        switchBlockDeviceAdmin.setChecked(prefs.getBoolean("block_device_admin", false));
 
         // Switch listeners
         switchWhatsApp.setOnCheckedChangeListener((btn, checked) ->
@@ -83,6 +86,11 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        switchBlockDeviceAdmin.setOnCheckedChangeListener((btn, checked) -> {
+            prefs.edit().putBoolean("block_device_admin", checked).apply();
+            Toast.makeText(this, checked ? "🛡️ Admin Settings Protected" : "✅ Admin Protection OFF", Toast.LENGTH_SHORT).show();
+        });
+
         // Enable Accessibility Service
         btnEnableService.setOnClickListener(v -> {
             openAccessibilitySettings();
@@ -102,16 +110,24 @@ public class MainActivity extends AppCompatActivity {
             openAccessibilitySettings();
         });
 
-        // Enable Device Admin
+        // Enable/Disable Device Admin (Authorized bypass)
         btnEnableAdmin.setOnClickListener(v -> {
-            if (!dpm.isAdminActive(adminComponent)) {
+            if (dpm.isAdminActive(adminComponent)) {
+                // If protection is ON, we must disable it first to let the user enter settings
+                if (prefs.getBoolean("block_device_admin", false)) {
+                    prefs.edit().putBoolean("block_device_admin", false).apply();
+                    switchBlockDeviceAdmin.setChecked(false);
+                    Toast.makeText(this, "Protection disabled. You can now deactivate admin.", Toast.LENGTH_LONG).show();
+                }
+
                 Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
                 intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
-                intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                    "Device Admin permission is required to protect FocusGuard from being uninstalled.");
                 startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
             } else {
-                Toast.makeText(this, "✅ Device Admin is already active!", Toast.LENGTH_SHORT).show();
+                Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+                intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
+                intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "FocusGuard needs admin to prevent unauthorized uninstallation.");
+                startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
             }
         });
     }
