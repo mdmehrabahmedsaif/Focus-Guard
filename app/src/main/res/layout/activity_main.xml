@@ -194,7 +194,7 @@
                 android:checked="true"/>
         </LinearLayout>
 
-        <!-- Device Admin Card -->
+        <!-- Uninstall Prevention Card -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -204,11 +204,30 @@
             android:layout_marginBottom="12dp"
             android:elevation="2dp">
 
+            <!-- Section Title -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🔒 Uninstall Protection"
+                android:text="🔒 Uninstall Prevention"
                 android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#212121"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Protect FocusGuard from being disabled or removed"
+                android:textSize="12sp"
+                android:textColor="#757575"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="12dp"/>
+
+            <!-- Device Admin Row -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Device Admin"
+                android:textSize="14sp"
                 android:textStyle="bold"
                 android:textColor="#212121"/>
 
@@ -217,9 +236,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="❌ Protection is OFF"
-                android:textSize="14sp"
+                android:textSize="13sp"
                 android:textColor="#F44336"
-                android:layout_marginTop="8dp"/>
+                android:layout_marginTop="4dp"/>
 
             <Button
                 android:id="@+id/btnEnableAdmin"
@@ -228,7 +247,55 @@
                 android:text="Enable Device Admin"
                 android:backgroundTint="#388E3C"
                 android:textColor="#FFFFFF"
-                android:layout_marginTop="12dp"/>
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#E0E0E0"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- Block Accessibility Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🚫 Block Accessibility Settings"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="#212121"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Instantly ejects from FocusGuard Blocker page"
+                        android:textSize="12sp"
+                        android:textColor="#757575"
+                        android:layout_marginTop="2dp"/>
+
+                </LinearLayout>
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchBlockAccessibility"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="false"/>
+
+            </LinearLayout>
+
         </LinearLayout>
 
     </LinearLayout>

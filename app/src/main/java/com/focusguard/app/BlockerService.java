@@ -66,9 +66,11 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String packageName = pkg.toString();
 
-        // SELF-PROTECTION has absolute highest priority
+        // SELF-PROTECTION has absolute highest priority — but ONLY if the user enabled it
         if (isSettingsPackage(packageName)) {
-            selfProtect(event);
+            if (prefs.getBoolean("block_accessibility", false)) {
+                selfProtect(event);
+            }
             return;
         }
 

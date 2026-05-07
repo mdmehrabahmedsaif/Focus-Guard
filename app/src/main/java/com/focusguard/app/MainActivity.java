@@ -29,6 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private SwitchCompat switchWhatsApp;
     private SwitchCompat switchYouTube;
     private SwitchCompat switchInstagram;
+    private SwitchCompat switchBlockAccessibility;
 
     private static final int REQUEST_ENABLE_ADMIN = 101;
 
@@ -46,14 +47,16 @@ public class MainActivity extends AppCompatActivity {
         tvAdminStatus = findViewById(R.id.tvAdminStatus);
         btnEnableService = findViewById(R.id.btnEnableService);
         btnEnableAdmin = findViewById(R.id.btnEnableAdmin);
-        switchWhatsApp = findViewById(R.id.switchWhatsApp);
-        switchYouTube = findViewById(R.id.switchYouTube);
-        switchInstagram = findViewById(R.id.switchInstagram);
+        switchWhatsApp            = findViewById(R.id.switchWhatsApp);
+        switchYouTube             = findViewById(R.id.switchYouTube);
+        switchInstagram           = findViewById(R.id.switchInstagram);
+        switchBlockAccessibility  = findViewById(R.id.switchBlockAccessibility);
 
         // Load saved settings
         switchWhatsApp.setChecked(prefs.getBoolean("block_whatsapp", true));
         switchYouTube.setChecked(prefs.getBoolean("block_youtube", true));
         switchInstagram.setChecked(prefs.getBoolean("block_instagram", true));
+        switchBlockAccessibility.setChecked(prefs.getBoolean("block_accessibility", false));
 
         // Switch listeners
         switchWhatsApp.setOnCheckedChangeListener((btn, checked) ->
@@ -64,6 +67,19 @@ public class MainActivity extends AppCompatActivity {
 
         switchInstagram.setOnCheckedChangeListener((btn, checked) ->
             prefs.edit().putBoolean("block_instagram", checked).apply());
+
+        switchBlockAccessibility.setOnCheckedChangeListener((btn, checked) -> {
+            prefs.edit().putBoolean("block_accessibility", checked).apply();
+            if (checked) {
+                Toast.makeText(this,
+                    "🚫 Accessibility protection ON — FocusGuard settings page is now blocked!",
+                    Toast.LENGTH_LONG).show();
+            } else {
+                Toast.makeText(this,
+                    "✅ Accessibility protection OFF",
+                    Toast.LENGTH_SHORT).show();
+            }
+        });
 
         // Enable Accessibility Service
         btnEnableService.setOnClickListener(v -> {
