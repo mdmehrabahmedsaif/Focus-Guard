@@ -26,9 +26,9 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvAdminStatus;
     private Button btnEnableService;
     private Button btnEnableAdmin;
-    private Switch switchWhatsApp;
-    private Switch switchYouTube;
-    private Switch switchInstagram;
+    private SwitchCompat switchWhatsApp;
+    private SwitchCompat switchYouTube;
+    private SwitchCompat switchInstagram;
 
     private static final int REQUEST_ENABLE_ADMIN = 101;
 
