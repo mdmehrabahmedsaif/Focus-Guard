@@ -3,45 +3,65 @@ name: Build APK
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Set up JDK 17
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: gradle
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.2'
-
-    - name: Fix broken wrapper
-      run: |
-        rm -f gradlew
-        rm -f gradlew.bat
-        rm -rf gradle/wrapper
-        gradle wrapper --gradle-version 8.2 --distribution-type all
-
-    - name: List files for debugging
-      run: ls -R
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
 
     - name: Build Debug APK
-      run: |
-        chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace --info
+      run: ./gradlew assembleDebug --stacktrace
 
-    - name: Upload APK
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: FocusGuard-APK
+        name: FocusGuard-Debug-APK
         path: app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 7
+        retention-days: 30
+
+    - name: Get version info
+      id: version
+      run: |
+        echo "VERSION=v1.0-$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+        echo "DATE=$(date +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.version.outputs.VERSION }}
+        name: "FocusGuard ${{ steps.version.outputs.VERSION }}"
+        body: |
+          ## FocusGuard Release ${{ steps.version.outputs.VERSION }}
+          **Build Date:** ${{ steps.version.outputs.DATE }}
+
+          ### What's included:
+          - ✅ WhatsApp Updates/Channels tab blocking
+          - ✅ YouTube Shorts blocking
+          - ✅ Instagram Reels blocking
+          - ✅ Device Admin uninstall protection
+          - ✅ Faster 500ms block response time
+
+          ### How to install:
+          1. Download `app-debug.apk` below
+          2. Enable "Install from unknown sources" on your device
+          3. Install the APK
+          4. Enable the Accessibility Service from the app
+        files: app/build/outputs/apk/debug/app-debug.apk
+        draft: false
+        prerelease: false
