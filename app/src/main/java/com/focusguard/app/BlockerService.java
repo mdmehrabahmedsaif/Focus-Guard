@@ -100,6 +100,12 @@ public class BlockerService extends AccessibilityService {
      *                           We match by the UNIQUE DESCRIPTION here.
      */
     private void selfProtect(AccessibilityEvent event) {
+        // SAFETY FIRST: Never block our own app!
+        CharSequence eventPkg = event.getPackageName();
+        if (eventPkg != null && eventPkg.toString().equals(getPackageName())) {
+            return;
+        }
+
         int type = event.getEventType();
 
         // ── A: CLICK-BASED PROTECTION (The primary trigger) ──────────────────
@@ -132,6 +138,23 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean eventTextContainsFocusGuardKeyword(AccessibilityEvent event) {
+        // Double check: Never process if the source belongs to our app
+        AccessibilityNodeInfo source = event.getSource();
+        if (source != null) {
+            try {
+                CharSequence sourcePkg = source.getPackageName();
+                if (sourcePkg != null && sourcePkg.toString().equals(getPackageName())) return false;
+                
+                List<AccessibilityNodeInfo> hits = source.findAccessibilityNodeInfosByText("FocusGuard");
+                if (hits != null && !hits.isEmpty()) {
+                    for (AccessibilityNodeInfo n : hits) n.recycle();
+                    return true;
+                }
+            } finally {
+                source.recycle();
+            }
+        }
+
         // Look for "focusguard" anywhere in the clicked item's text or content description
         String keyword = "focusguard";
         
@@ -144,22 +167,27 @@ public class BlockerService extends AccessibilityService {
         
         CharSequence cd = event.getContentDescription();
         if (cd != null && cd.toString().toLowerCase().contains(keyword)) return true;
-
-        // Fallback: Check the source node if available
-        AccessibilityNodeInfo source = event.getSource();
-        if (source != null) {
-            try {
-                List<AccessibilityNodeInfo> hits = source.findAccessibilityNodeInfosByText("FocusGuard");
-                if (hits != null && !hits.isEmpty()) {
-                    for (AccessibilityNodeInfo n : hits) n.recycle();
-                    return true;
-                }
-            } finally {
-                source.recycle();
-            }
-        }
         
         return false;
+    }
+
+    private boolean rootContainsDescription() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        try {
+            CharSequence rootPkg = root.getPackageName();
+            if (rootPkg != null && rootPkg.toString().equals(getPackageName())) return false;
+
+            String desc = "monitors and blocks WhatsApp Channels";
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(desc);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
+                return true;
+            }
+            return false;
+        } finally {
+            root.recycle();
+        }
     }
 
     /**
@@ -215,24 +243,8 @@ public class BlockerService extends AccessibilityService {
         return cd != null && cd.toString().contains(desc);
     }
 
-    private boolean rootContainsDescription() {
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return false;
-        try {
-            String desc = "monitors and blocks WhatsApp Channels";
-            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(desc);
-            if (hits != null && !hits.isEmpty()) {
-                for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
-                return true;
-            }
-            return false;
-        } finally {
-            root.recycle();
-        }
-    }
-
     private boolean containsFocusGuard(String text) {
-        return text != null && text.toLowerCase().contains(SERVICE_LABEL_LOWER);
+        return text != null && text.toLowerCase().contains("focusguard");
     }
 
     /** Launches the BlockActivity to show a "Window" and also kicks to Home screen. */
