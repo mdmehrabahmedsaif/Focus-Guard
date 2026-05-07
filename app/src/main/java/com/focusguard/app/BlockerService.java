@@ -93,47 +93,48 @@ public class BlockerService extends AccessibilityService {
      *                           Kick IMMEDIATELY — detail page hasn't loaded yet.
      *                           Fastest possible response.
      *
-     *  B) TYPE_WINDOW_STATE_CHANGED → New screen appeared (Stock Android, Pixel).
-     *                           Check event text + root scan.
+     *  B) TYPE_WINDOW_STATE_CHANGED → New sc    /**
+     * 3-event strategy for maximum reliability on Samsung and others:
      *
-     *  C) TYPE_WINDOW_CONTENT_CHANGED → Samsung One UI fragment navigation.
-     *                           Rate-limited root scan (every 150ms max).
+     *  A) TYPE_VIEW_CLICKED   → User tapped the name in the list.
+     *                           We match by the LABEL here.
+     *
+     *  B) WINDOW_STATE/CONTENT → User is on the detail page.
+     *                           We match by the UNIQUE DESCRIPTION here.
      */
     private void selfProtect(AccessibilityEvent event) {
         int type = event.getEventType();
 
-        // ── A: PRE-EMPTIVE — fire before detail page even loads ───────────────
+        // ── A: PRE-EMPTIVE — User tapped our name in the list ────────────────
         if (type == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            if (eventTextContainsFocusGuard(event)) {
+            if (eventTextContainsLabel(event)) {
                 kickOut();
             }
             return;
         }
 
-        // ── B & C: Screen appeared or content updated ─────────────────────────
+        // ── B: On the detail page (Fragment/Window change) ────────────────────
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return;
 
-        // Fast text check (zero-cost)
-        if (eventTextContainsFocusGuard(event)) {
+        // Match by unique description string
+        if (eventTextContainsDescription(event) || rootContainsDescription()) {
             kickOut();
-            return;
-        }
-
-        // Root scan — only if we haven't kicked in the last SELF_PROT_COOLDOWN ms
-        long now = System.currentTimeMillis();
-        if (now - lastSelfProtTime > SELF_PROT_COOLDOWN) {
-            if (rootContainsFocusGuard()) {
-                kickOut();
-            }
         }
     }
 
+    private boolean eventTextContainsLabel(AccessibilityEvent event) {
+        List<CharSequence> texts = event.getText();
+        if (texts != null) {
+            for (CharSequence t : texts) {
+                if (t != null && t.toString().toLowerCase().contains(SERVICE_LABEL_LOWER)) return true;
+            }
+        }
+        return false;
+    }
 
-    /** Check event-level texts for the unique description string. */
-    private boolean eventTextContainsFocusGuard(AccessibilityEvent event) {
+    private boolean eventTextContainsDescription(AccessibilityEvent event) {
         String desc = "FocusGuard monitors and blocks WhatsApp Channels";
-        
         List<CharSequence> texts = event.getText();
         if (texts != null) {
             for (CharSequence t : texts) {
@@ -144,19 +145,12 @@ public class BlockerService extends AccessibilityService {
         return cd != null && cd.toString().contains(desc);
     }
 
-    /**
-     * Walk the live UI tree looking for our specific accessibility description.
-     * This text ONLY exists on the detail page, not in the list.
-     */
-    private boolean rootContainsFocusGuard() {
+    private boolean rootContainsDescription() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
         try {
-            // The detail page ALWAYS contains this specific long description.
-            // This is the most reliable way to distinguish the detail page from the list.
-            String description = "FocusGuard monitors and blocks WhatsApp Channels";
-            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(description);
-            
+            String desc = "FocusGuard monitors and blocks WhatsApp Channels";
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(desc);
             if (hits != null && !hits.isEmpty()) {
                 for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
                 return true;
