@@ -160,6 +160,8 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == REQUEST_ENABLE_ADMIN) {
             updateStatusUI();
         }
+    }
+
     private void openAccessibilitySettings() {
         Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
         startActivity(intent);
