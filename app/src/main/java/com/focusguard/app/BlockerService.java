@@ -71,34 +71,46 @@ public class BlockerService extends AccessibilityService {
 
     private boolean isWhatsAppUpdatesTabActive(AccessibilityNodeInfo root) {
         // "Updates" নামের node খোঁজো যেটা selected
+        // WhatsApp-এর নতুন ভার্সনে ট্যাবগুলোর নাম "Updates", "Chats", "Communities", "Calls"
         List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("Updates");
         if (nodes != null) {
             for (AccessibilityNodeInfo node : nodes) {
                 if (node != null) {
+                    // যদি এই নোডটা সিলেক্টেড থাকে অথবা এর প্যারেন্ট (ট্যাব বাটন) সিলেক্টেড থাকে
                     if (node.isSelected() || node.isChecked()) {
                         node.recycle();
                         return true;
+                    }
+                    
+                    // অনেক সময় টেক্সট নিজে সিলেক্টেড থাকে না, কিন্তু তার প্যারেন্ট কন্টেইনার থাকে
+                    AccessibilityNodeInfo parent = node.getParent();
+                    if (parent != null) {
+                        if (parent.isSelected() || parent.isChecked()) {
+                            parent.recycle();
+                            node.recycle();
+                            return true;
+                        }
+                        parent.recycle();
                     }
                     node.recycle();
                 }
             }
         }
 
-        // "Following" টেক্সট দেখা গেলে মানে channel feed এ আছে
-        List<AccessibilityNodeInfo> followingNodes = root.findAccessibilityNodeInfosByText("Following");
-        if (followingNodes != null && !followingNodes.isEmpty()) {
-            for (AccessibilityNodeInfo n : followingNodes) {
-                if (n != null) n.recycle();
+        // কন্টেন্ট ডেসক্রিপশন দিয়ে চেক (অনেক সময় টেক্সট পাওয়া যায় না)
+        AccessibilityNodeInfo updatesTab = findNodeWithContentDesc(root, "Updates");
+        if (updatesTab != null) {
+            if (updatesTab.isSelected() || updatesTab.isChecked()) {
+                updatesTab.recycle();
+                return true;
             }
-            return true;
+            updatesTab.recycle();
         }
 
-        // "Channels" হেডার দেখা গেলে
-        List<AccessibilityNodeInfo> channelNodes = root.findAccessibilityNodeInfosByText("Channels");
-        if (channelNodes != null && !channelNodes.isEmpty()) {
-            for (AccessibilityNodeInfo n : channelNodes) {
-                if (n != null) n.recycle();
-            }
+        // চ্যানেলের ভেতরে থাকলে "Channel info" বা "Channel settings" টাইপ কিছু দেখা যায়
+        if (!root.findAccessibilityNodeInfosByText("Channel info").isEmpty() ||
+            !root.findAccessibilityNodeInfosByText("Follow").isEmpty() ||
+            !root.findAccessibilityNodeInfosByText("Following").isEmpty()) {
             return true;
         }
 

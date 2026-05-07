@@ -78,10 +78,10 @@ public class MainActivity extends AppCompatActivity {
                 Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
                 intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
                 intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                    "FocusGuard কে আনইন্সটল থেকে রক্ষা করতে Device Admin চালু করো।");
+                    "FocusGuard কে আনইন্সটল করা থেকে রক্ষা করতে এবং ফিচারগুলো কার্যকর রাখতে Device Admin পারমিশন প্রয়োজন।");
                 startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
             } else {
-                Toast.makeText(this, "✅ Device Admin ইতিমধ্যে চালু আছে!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "✅ Device Admin ইতিমধ্যেই সক্রিয় আছে!", Toast.LENGTH_SHORT).show();
             }
         });
     }
