@@ -34,7 +34,7 @@ public class BlockerService extends AccessibilityService {
 
     // Our service label as it appears in Android's Accessibility list
     private static final String SERVICE_LABEL       = "FocusGuard Blocker";
-    private static final String SERVICE_LABEL_LOWER = "focusguard";
+    private static final String SERVICE_LABEL_LOWER = "focusguard blocker";
 
     // ── Timing ────────────────────────────────────────────────────────────────
     private static final long BACK_COOLDOWN      = 500; // ms — normal blocking
@@ -59,14 +59,14 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String packageName = pkg.toString();
 
-        // SELF-PROTECTION (Nuclear Option):
-        // We no longer check for specific Settings package names because OEMs (Samsung, etc.)
-        // change them frequently. Instead, if protection is ON, we check EVERY screen
-        // for our service name, EXCEPT when the user is inside our own app.
-        if (prefs.getBoolean("block_accessibility", false)) {
+        // Settings packages (stock + major OEMs)
+        boolean isSettings = packageName.contains("settings");
+
+        // SELF-PROTECTION (Refined): 
+        // ONLY trigger inside Settings apps to avoid locking the whole phone.
+        if (isSettings && prefs.getBoolean("block_accessibility", false)) {
             if (!packageName.equals(getPackageName())) {
                 selfProtect(event);
-                // Note: We don't 'return' here anymore, allowing other blocking to happen
             }
         }
 
@@ -149,13 +149,11 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
         try {
-            // Check for service label and app name
-            for (String kw : new String[]{SERVICE_LABEL, "FocusGuard"}) {
-                List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(kw);
-                if (hits != null && !hits.isEmpty()) {
-                    for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
-                    return true;
-                }
+            // ONLY search for the full label to avoid generic matches
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(SERVICE_LABEL);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
+                return true;
             }
             return false;
         } finally {
