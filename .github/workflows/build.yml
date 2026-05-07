@@ -31,10 +31,13 @@ jobs:
         rm -rf gradle/wrapper
         gradle wrapper --gradle-version 8.2 --distribution-type all
 
+    - name: List files for debugging
+      run: ls -R
+
     - name: Build Debug APK
       run: |
         chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace --info
+        ./gradlew assembleDebug --stacktrace --debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
