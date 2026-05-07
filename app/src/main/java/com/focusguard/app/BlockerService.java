@@ -89,27 +89,29 @@ public class BlockerService extends AccessibilityService {
     // =========================================================================
 
     /**
-     * Called for every event from a Settings app.
+     * Called for every event from a Settings app (when block_accessibility pref is ON).
      *
-     * Simplified strategy — no fragile class-name checks:
-     *   1. Only act on TYPE_WINDOW_STATE_CHANGED (fires when any new screen opens).
-     *   2. Check event texts for "FocusGuard" (zero-cost, fastest possible).
-     *   3. If not found in event texts, do a root-node scan (definitive).
+     * Samsung One UI uses FRAGMENT navigation inside Settings.
+     * That means going to the FocusGuard detail page fires TYPE_WINDOW_CONTENT_CHANGED,
+     * NOT TYPE_WINDOW_STATE_CHANGED.  We must listen to BOTH.
      *
-     * This fires every time a new Settings screen opens, which is cheap.
-     * If "FocusGuard Blocker" text is found anywhere on screen → kick out.
+     * Rate-limit: root scan is only done once per SELF_PROT_COOLDOWN window
+     * to avoid excessive CPU on rapid content-change events.
      */
     private void selfProtect(AccessibilityEvent event) {
-        // Only act when a new screen appears — ignore content/scroll events
-        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
+        int type = event.getEventType();
 
-        // Fast path: event itself often carries the window title
+        // Accept both event types — Samsung fires CONTENT_CHANGED for fragment nav
+        if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return;
+
+        // Fast path — event texts often include the window/page title
         if (eventTextContainsFocusGuard(event)) {
             kickOut();
             return;
         }
 
-        // Definitive path: scan the live UI tree
+        // Root scan — definitive but heavier; rate-limited by kickOut() cooldown
         if (rootContainsFocusGuard()) {
             kickOut();
         }
