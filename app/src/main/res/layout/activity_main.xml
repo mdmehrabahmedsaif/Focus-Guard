@@ -258,7 +258,17 @@
                 android:backgroundTint="#388E3C"
                 android:textColor="#FFFFFF"
                 android:layout_marginTop="8dp"
-                android:layout_marginBottom="16dp"/>
+                android:layout_marginBottom="8dp"/>
+
+            <Button
+                android:id="@+id/btnDisableAdmin"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Turn OFF Device Admin"
+                android:backgroundTint="#B0BEC5"
+                android:textColor="#212121"
+                android:layout_marginBottom="16dp"
+                android:visibility="gone"/>
 
             <!-- Divider -->
             <View

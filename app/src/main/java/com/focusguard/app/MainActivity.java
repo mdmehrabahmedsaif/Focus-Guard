@@ -27,6 +27,7 @@ public class MainActivity extends AppCompatActivity {
     private Button btnEnableService;
     private Button btnDisableService;
     private Button btnEnableAdmin;
+    private Button btnDisableAdmin;
     private SwitchCompat switchWhatsApp;
     private SwitchCompat switchYouTube;
     private SwitchCompat switchInstagram;
@@ -50,6 +51,7 @@ public class MainActivity extends AppCompatActivity {
         btnEnableService          = findViewById(R.id.btnEnableService);
         btnDisableService         = findViewById(R.id.btnDisableService);
         btnEnableAdmin            = findViewById(R.id.btnEnableAdmin);
+        btnDisableAdmin           = findViewById(R.id.btnDisableAdmin);
         switchWhatsApp            = findViewById(R.id.switchWhatsApp);
         switchYouTube             = findViewById(R.id.switchYouTube);
         switchInstagram           = findViewById(R.id.switchInstagram);
@@ -110,25 +112,28 @@ public class MainActivity extends AppCompatActivity {
             openAccessibilitySettings();
         });
 
-        // Enable/Disable Device Admin (Authorized bypass)
+        // Enable Device Admin
         btnEnableAdmin.setOnClickListener(v -> {
-            if (dpm.isAdminActive(adminComponent)) {
-                // If protection is ON, we must disable it first to let the user enter settings
-                if (prefs.getBoolean("block_device_admin", false)) {
-                    prefs.edit().putBoolean("block_device_admin", false).apply();
-                    switchBlockDeviceAdmin.setChecked(false);
-                    Toast.makeText(this, "Protection disabled. You can now deactivate admin.", Toast.LENGTH_LONG).show();
-                }
+            Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+            intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
+            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "FocusGuard needs admin to prevent unauthorized uninstallation.");
+            startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
+        });
 
-                Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
-                intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
-                startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
-            } else {
-                Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
-                intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
-                intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "FocusGuard needs admin to prevent unauthorized uninstallation.");
-                startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
-            }
+        // Disable Device Admin (Authorized bypass)
+        btnDisableAdmin.setOnClickListener(v -> {
+            // 1. Temporarily disable the protection so the user can enter the page
+            prefs.edit().putBoolean("block_device_admin", false).apply();
+            switchBlockDeviceAdmin.setChecked(false);
+            
+            Toast.makeText(this, 
+                "Protection disabled. You can now deactivate admin.", 
+                Toast.LENGTH_LONG).show();
+
+            // 2. Open the deactivation screen
+            Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+            intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
+            startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
         });
     }
 
@@ -154,10 +159,13 @@ public class MainActivity extends AppCompatActivity {
         if (dpm.isAdminActive(adminComponent)) {
             tvAdminStatus.setText("✅ Protection is ON");
             tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.status_on));
-            btnEnableAdmin.setText("✅ PROTECTION ON");
+            btnEnableAdmin.setVisibility(android.view.View.GONE);
+            btnDisableAdmin.setVisibility(android.view.View.VISIBLE);
         } else {
             tvAdminStatus.setText("❌ Protection is OFF");
             tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
+            btnEnableAdmin.setVisibility(android.view.View.VISIBLE);
+            btnDisableAdmin.setVisibility(android.view.View.GONE);
             btnEnableAdmin.setText("Enable Device Admin");
         }
     }
