@@ -133,12 +133,20 @@ public class BlockerService extends AccessibilityService {
     private boolean rootContainsAdminContext() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
+        
         try {
+            CharSequence rootPkg = root.getPackageName();
+            if (rootPkg == null) return false;
+            String pkgName = rootPkg.toString();
+
+            // ONLY check if we are in a Settings app. 
+            // This prevents us from blocking our own app's UI!
+            if (!pkgName.contains("settings")) return false;
+
             // Find our app name first
             List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
             if (hits != null && !hits.isEmpty()) {
-                // If we find FocusGuard, check if we are on an admin-related page
-                // Look for common admin keywords
+                // Look for deactivation keywords specifically
                 String[] adminKeywords = {"Deactivate", "admin app", "device admin"};
                 for (String kw : adminKeywords) {
                     List<AccessibilityNodeInfo> contextHits = root.findAccessibilityNodeInfosByText(kw);
