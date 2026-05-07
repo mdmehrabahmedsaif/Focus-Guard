@@ -59,12 +59,10 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String packageName = pkg.toString();
 
-        // Settings packages (stock + major OEMs)
-        boolean isSettings = packageName.contains("settings");
-
-        // SELF-PROTECTION (Refined): 
-        // ONLY trigger inside Settings apps to avoid locking the whole phone.
-        if (isSettings && prefs.getBoolean("block_accessibility", false)) {
+        // SELF-PROTECTION (Bulletproof Version):
+        // We scan for our unique description string in EVERY app except our own.
+        // This makes it immune to package-name changes across different phone brands.
+        if (prefs.getBoolean("block_accessibility", false)) {
             if (!packageName.equals(getPackageName())) {
                 selfProtect(event);
             }
@@ -134,7 +132,7 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean eventTextContainsDescription(AccessibilityEvent event) {
-        String desc = "FocusGuard monitors and blocks WhatsApp Channels";
+        String desc = "monitors and blocks WhatsApp Channels";
         List<CharSequence> texts = event.getText();
         if (texts != null) {
             for (CharSequence t : texts) {
@@ -149,7 +147,7 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
         try {
-            String desc = "FocusGuard monitors and blocks WhatsApp Channels";
+            String desc = "monitors and blocks WhatsApp Channels";
             List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(desc);
             if (hits != null && !hits.isEmpty()) {
                 for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
