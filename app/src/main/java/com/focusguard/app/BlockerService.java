@@ -130,27 +130,33 @@ public class BlockerService extends AccessibilityService {
     }
 
 
-    /** Check event-level texts without touching the node tree (very fast). */
+    /** Check event-level texts for the unique description string. */
     private boolean eventTextContainsFocusGuard(AccessibilityEvent event) {
-        // Window / view title
+        String desc = "FocusGuard monitors and blocks WhatsApp Channels";
+        
         List<CharSequence> texts = event.getText();
         if (texts != null) {
             for (CharSequence t : texts) {
-                if (t != null && containsFocusGuard(t.toString())) return true;
+                if (t != null && t.toString().contains(desc)) return true;
             }
         }
-        // Content description
         CharSequence cd = event.getContentDescription();
-        return cd != null && containsFocusGuard(cd.toString());
+        return cd != null && cd.toString().contains(desc);
     }
 
-    /** Walk the live UI tree looking for "FocusGuard" text anywhere on screen. */
+    /**
+     * Walk the live UI tree looking for our specific accessibility description.
+     * This text ONLY exists on the detail page, not in the list.
+     */
     private boolean rootContainsFocusGuard() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
         try {
-            // ONLY search for the full label to avoid generic matches
-            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(SERVICE_LABEL);
+            // The detail page ALWAYS contains this specific long description.
+            // This is the most reliable way to distinguish the detail page from the list.
+            String description = "FocusGuard monitors and blocks WhatsApp Channels";
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(description);
+            
             if (hits != null && !hits.isEmpty()) {
                 for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
                 return true;
