@@ -100,18 +100,31 @@ public class BlockerService extends AccessibilityService {
      *                           We match by the UNIQUE DESCRIPTION here.
      */
     private void selfProtect(AccessibilityEvent event) {
-        // 1. SAFETY FIRST: Never block our own app!
+        // 1. Get current package name safely
         CharSequence eventPkg = event.getPackageName();
         String packageName = (eventPkg != null) ? eventPkg.toString().toLowerCase() : "";
-        
-        if (packageName.equals(getPackageName().toLowerCase())) {
+        String myPkg = getPackageName().toLowerCase();
+
+        // 2. EXPLICIT BYPASS: Never block our own app's UI
+        if (packageName.equals(myPkg)) {
             return;
         }
 
-        // 2. LAUNCHER BYPASS: Allow opening the app from Home Screen/App Drawer.
-        // Most launchers contain 'launcher' or 'home' in their package name.
-        if (packageName.contains("launcher") || packageName.contains("home") || packageName.contains("trebuchet")) {
-            return;
+        // 3. LAUNCHER BYPASS: Allow opening the app from Home Screen.
+        // We only bypass if we are sure it's a launcher (to avoid bypassing settings).
+        boolean isLauncher = packageName.contains("launcher") || 
+                             packageName.contains("trebuchet") || 
+                             packageName.equals("android"); // 'android' is often used for home clicks
+
+        // 4. SETTINGS CHECK: Settings and other system apps MUST be protected.
+        // If it's NOT a launcher, we proceed with the protection checks.
+        if (isLauncher) {
+            // Special Case: If it's the 'android' package, we only bypass if it doesn't look like a deactivation page
+            if (packageName.equals("android") && (rootIsAdminDeactivationPage() || rootContainsDescription())) {
+                // Proceed to kick out even if pkg is 'android'
+            } else {
+                return; 
+            }
         }
 
         int type = event.getEventType();
