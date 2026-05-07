@@ -40,25 +40,8 @@ public class BlockerService extends AccessibilityService {
         "com.lge.settings"
     };
 
-    /**
-     * Activity class names that are SPECIFICALLY the accessibility-service
-     * DETAIL page (not the generic list page).
-     * Only these trigger self-protection to avoid kicking the user out of
-     * the general Accessibility list where our app appears as a list item.
-     */
-    private static final String[] ACCESSIBILITY_SERVICE_DETAIL_CLASSES = {
-        // AOSP / Pixel
-        "com.android.settings.accessibility.AccessibilityServiceActivity",
-        // Android 12+ AOSP
-        "com.android.settings.accessibility.AccessibilityDetailsPreferenceFragment",
-        // Samsung
-        "com.samsung.android.settings.accessibility.AccessibilityDetailsActivity",
-        // Many OEMs wrap sub-pages in SubSettings — handled separately below
-        "com.android.settings.SubSettings"
-    };
-
     // Our service label as it appears in Android's Accessibility list
-    private static final String SERVICE_LABEL      = "FocusGuard Blocker";
+    private static final String SERVICE_LABEL       = "FocusGuard Blocker";
     private static final String SERVICE_LABEL_LOWER = "focusguard";
 
     // ── Timing ────────────────────────────────────────────────────────────────
@@ -104,62 +87,30 @@ public class BlockerService extends AccessibilityService {
     // =========================================================================
 
     /**
-     * Called for every event originating in a Settings app.
+     * Called for every event from a Settings app.
      *
-     * Strategy:
-     *   Step 1 – Check if the current Activity class name belongs to the
-     *            specific Accessibility SERVICE DETAIL page.
-     *            If NOT, bail out immediately (let the user use Settings normally).
-     *   Step 2 – We are on a service-detail page. Check event texts (cheapest).
-     *   Step 3 – Fall back to a root-node scan (guarantees correctness even when
-     *            the event texts are empty).
+     * Simplified strategy — no fragile class-name checks:
+     *   1. Only act on TYPE_WINDOW_STATE_CHANGED (fires when any new screen opens).
+     *   2. Check event texts for "FocusGuard" (zero-cost, fastest possible).
+     *   3. If not found in event texts, do a root-node scan (definitive).
      *
-     * This approach ensures we only kick when the user has actually opened the
-     * FocusGuard Blocker detail page, not when it's merely visible as a list item.
+     * This fires every time a new Settings screen opens, which is cheap.
+     * If "FocusGuard Blocker" text is found anywhere on screen → kick out.
      */
     private void selfProtect(AccessibilityEvent event) {
-        String className = event.getClassName() != null ? event.getClassName().toString() : "";
+        // Only act when a new screen appears — ignore content/scroll events
+        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
 
-        // ── Step 1: Is this the accessibility service DETAIL page? ────────────
-        boolean onServiceDetailPage = isServiceDetailClass(className);
-
-        if (!onServiceDetailPage) {
-            // Not on a service detail page — leave Settings alone.
-            return;
-        }
-
-        // ── Step 2: Fast path — event texts / content description ─────────────
+        // Fast path: event itself often carries the window title
         if (eventTextContainsFocusGuard(event)) {
             kickOut();
             return;
         }
 
-        // ── Step 3: Root scan — definitive check ──────────────────────────────
-        // TYPE_WINDOW_STATE_CHANGED = new window opened (most reliable)
-        // TYPE_WINDOW_CONTENT_CHANGED = content updated (catches delayed renders)
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            if (rootContainsFocusGuard()) {
-                kickOut();
-            }
+        // Definitive path: scan the live UI tree
+        if (rootContainsFocusGuard()) {
+            kickOut();
         }
-    }
-
-    /**
-     * Returns true ONLY for class names that represent the accessibility
-     * SERVICE DETAIL screen (not the generic service list).
-     */
-    private boolean isServiceDetailClass(String className) {
-        for (String cls : ACCESSIBILITY_SERVICE_DETAIL_CLASSES) {
-            if (className.equals(cls)) return true;
-        }
-        // Additional heuristic: class name ends in "ServiceActivity" or
-        // "DetailsActivity" / "DetailActivity" — covers undocumented OEM variants
-        String lower = className.toLowerCase();
-        return lower.endsWith("serviceactivity") ||
-               lower.endsWith("detailsactivity") ||
-               lower.endsWith("detailactivity")  ||
-               lower.endsWith("servicedetail");
     }
 
     /** Check event-level texts without touching the node tree (very fast). */
