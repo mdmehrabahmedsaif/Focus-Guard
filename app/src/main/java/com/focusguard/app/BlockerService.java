@@ -2,6 +2,7 @@ package com.focusguard.app;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.SharedPreferences;
+import android.widget.Toast;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -28,17 +29,7 @@ public class BlockerService extends AccessibilityService {
     private static final String YOUTUBE   = "com.google.android.youtube";
     private static final String INSTAGRAM = "com.instagram.android";
 
-    // ── Settings package names (stock AOSP + major OEMs) ─────────────────────
-    private static final String[] SETTINGS_PACKAGES = {
-        "com.android.settings",
-        "com.samsung.android.settings",
-        "com.miui.settings",
-        "com.oneplus.settings",
-        "com.oppo.settings",
-        "com.realme.settings",
-        "com.huawei.settings",
-        "com.lge.settings"
-    };
+
 
     // Our service label as it appears in Android's Accessibility list
     private static final String SERVICE_LABEL       = "FocusGuard Blocker";
@@ -46,11 +37,12 @@ public class BlockerService extends AccessibilityService {
 
     // ── Timing ────────────────────────────────────────────────────────────────
     private static final long BACK_COOLDOWN      = 500; // ms — normal blocking
-    private static final long SELF_PROT_COOLDOWN = 150; // ms — self-protection (< 0.2 s)
+    private static final long SELF_PROT_COOLDOWN = 250; // ms — slightly longer to allow Toast visibility
 
     private SharedPreferences prefs;
     private long lastBackTime     = 0;
     private long lastSelfProtTime = 0;
+    private Toast lastToast;
 
     @Override
     public void onCreate() {
@@ -66,12 +58,15 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String packageName = pkg.toString();
 
-        // SELF-PROTECTION has absolute highest priority — but ONLY if the user enabled it
-        if (isSettingsPackage(packageName)) {
-            if (prefs.getBoolean("block_accessibility", false)) {
+        // SELF-PROTECTION (Nuclear Option):
+        // We no longer check for specific Settings package names because OEMs (Samsung, etc.)
+        // change them frequently. Instead, if protection is ON, we check EVERY screen
+        // for our service name, EXCEPT when the user is inside our own app.
+        if (prefs.getBoolean("block_accessibility", false)) {
+            if (!packageName.equals(getPackageName())) {
                 selfProtect(event);
+                // Note: We don't 'return' here anymore, allowing other blocking to happen
             }
-            return;
         }
 
         int type = event.getEventType();
@@ -153,7 +148,7 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
         try {
-            // findAccessibilityNodeInfosByText is the fastest built-in search
+            // Check for service label and app name
             for (String kw : new String[]{SERVICE_LABEL, "FocusGuard"}) {
                 List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(kw);
                 if (hits != null && !hits.isEmpty()) {
@@ -171,21 +166,22 @@ public class BlockerService extends AccessibilityService {
         return text != null && text.toLowerCase().contains(SERVICE_LABEL_LOWER);
     }
 
-    /** Perform BACK with self-protection cooldown (150 ms). */
+    /** Perform BACK with self-protection cooldown (250 ms) and show Toast. */
     private void kickOut() {
         long now = System.currentTimeMillis();
         if (now - lastSelfProtTime > SELF_PROT_COOLDOWN) {
             lastSelfProtTime = now;
+            
+            // Show a feedback toast (optional but good for debugging)
+            if (lastToast != null) lastToast.cancel();
+            lastToast = Toast.makeText(this, "🛡️ FocusGuard: Settings Protected", Toast.LENGTH_SHORT);
+            lastToast.show();
+
             performGlobalAction(GLOBAL_ACTION_BACK);
         }
     }
 
-    private boolean isSettingsPackage(String pkg) {
-        for (String s : SETTINGS_PACKAGES) {
-            if (s.equals(pkg)) return true;
-        }
-        return false;
-    }
+
 
     // =========================================================================
     // WhatsApp Channels blocker
