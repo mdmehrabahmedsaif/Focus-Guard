@@ -91,31 +91,48 @@ public class BlockerService extends AccessibilityService {
     /**
      * Called for every event from a Settings app (when block_accessibility pref is ON).
      *
-     * Samsung One UI uses FRAGMENT navigation inside Settings.
-     * That means going to the FocusGuard detail page fires TYPE_WINDOW_CONTENT_CHANGED,
-     * NOT TYPE_WINDOW_STATE_CHANGED.  We must listen to BOTH.
+     * 3-event strategy for maximum reliability on all Android versions / OEMs:
      *
-     * Rate-limit: root scan is only done once per SELF_PROT_COOLDOWN window
-     * to avoid excessive CPU on rapid content-change events.
+     *  A) TYPE_VIEW_CLICKED   → User just tapped "FocusGuard Blocker" in the list.
+     *                           Kick IMMEDIATELY — detail page hasn't loaded yet.
+     *                           Fastest possible response.
+     *
+     *  B) TYPE_WINDOW_STATE_CHANGED → New screen appeared (Stock Android, Pixel).
+     *                           Check event text + root scan.
+     *
+     *  C) TYPE_WINDOW_CONTENT_CHANGED → Samsung One UI fragment navigation.
+     *                           Rate-limited root scan (every 150ms max).
      */
     private void selfProtect(AccessibilityEvent event) {
         int type = event.getEventType();
 
-        // Accept both event types — Samsung fires CONTENT_CHANGED for fragment nav
+        // ── A: PRE-EMPTIVE — fire before detail page even loads ───────────────
+        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            if (eventTextContainsFocusGuard(event)) {
+                kickOut();
+            }
+            return;
+        }
+
+        // ── B & C: Screen appeared or content updated ─────────────────────────
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return;
 
-        // Fast path — event texts often include the window/page title
+        // Fast text check (zero-cost)
         if (eventTextContainsFocusGuard(event)) {
             kickOut();
             return;
         }
 
-        // Root scan — definitive but heavier; rate-limited by kickOut() cooldown
-        if (rootContainsFocusGuard()) {
-            kickOut();
+        // Root scan — only if we haven't kicked in the last SELF_PROT_COOLDOWN ms
+        long now = System.currentTimeMillis();
+        if (now - lastSelfProtTime > SELF_PROT_COOLDOWN) {
+            if (rootContainsFocusGuard()) {
+                kickOut();
+            }
         }
     }
+
 
     /** Check event-level texts without touching the node tree (very fast). */
     private boolean eventTextContainsFocusGuard(AccessibilityEvent event) {
