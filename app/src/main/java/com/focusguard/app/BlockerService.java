@@ -9,13 +9,30 @@ import java.util.List;
 
 public class BlockerService extends AccessibilityService {
 
-    private static final String WHATSAPP = "com.whatsapp";
-    private static final String YOUTUBE = "com.google.android.youtube";
-    private static final String INSTAGRAM = "com.instagram.android";
+    private static final String WHATSAPP   = "com.whatsapp";
+    private static final String YOUTUBE    = "com.google.android.youtube";
+    private static final String INSTAGRAM  = "com.instagram.android";
+
+    // Android Settings packages (varies by OEM)
+    private static final String[] SETTINGS_PACKAGES = {
+        "com.android.settings",
+        "com.samsung.android.settings",
+        "com.miui.settings",
+        "com.oneplus.settings",
+        "com.oppo.settings",
+        "com.realme.settings"
+    };
+
+    // Our own package name — used to detect when user is viewing FocusGuard's accessibility page
+    private static final String OUR_PACKAGE = "com.focusguard.app";
 
     private SharedPreferences prefs;
-    private long lastBackTime = 0;
-    private static final long BACK_COOLDOWN = 500; // 0.5 second cooldown
+
+    private long lastBackTime     = 0;
+    private long lastSelfProtTime = 0;
+
+    private static final long BACK_COOLDOWN      = 500;  // 0.5s for normal blocking
+    private static final long SELF_PROT_COOLDOWN = 150;  // 0.15s — ultra-fast self-protection
 
     @Override
     public void onCreate() {
@@ -33,7 +50,13 @@ public class BlockerService extends AccessibilityService {
 
         int eventType = event.getEventType();
 
-        // Only react on meaningful events
+        // ── Self-Protection: react to ALL event types for speed ──────────────
+        if (isSettingsPackage(packageName)) {
+            handleSelfProtection(event);
+            return; // Don't do further processing inside Settings
+        }
+
+        // Only react on meaningful UI events for other apps
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) {
@@ -53,13 +76,101 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
+    // ─── Self-Protection: Block access to FocusGuard Accessibility Settings ──
+    private void handleSelfProtection(AccessibilityEvent event) {
+        // Fast-path: check event text first (cheapest check)
+        List<CharSequence> eventTexts = event.getText();
+        if (eventTexts != null) {
+            for (CharSequence text : eventTexts) {
+                if (text != null && isFocusGuardRelated(text.toString())) {
+                    goBackFast();
+                    return;
+                }
+            }
+        }
+
+        // Check content description of the event source
+        CharSequence contentDesc = event.getContentDescription();
+        if (contentDesc != null && isFocusGuardRelated(contentDesc.toString())) {
+            goBackFast();
+            return;
+        }
+
+        // Deeper check: scan the root node for FocusGuard text
+        // Only do this on window-change events to avoid constant scanning
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            try {
+                if (isViewingFocusGuardAccessibility(root)) {
+                    goBackFast();
+                }
+            } finally {
+                root.recycle();
+            }
+        }
+    }
+
+    private boolean isFocusGuardRelated(String text) {
+        if (text == null) return false;
+        String lower = text.toLowerCase();
+        return lower.contains("focusguard") ||
+               lower.contains("focus guard");
+    }
+
+    private boolean isViewingFocusGuardAccessibility(AccessibilityNodeInfo root) {
+        // Look for "FocusGuard" text anywhere on the screen
+        List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("FocusGuard");
+        if (nodes != null && !nodes.isEmpty()) {
+            for (AccessibilityNodeInfo n : nodes) {
+                if (n != null) n.recycle();
+            }
+            return true;
+        }
+
+        // Also check content descriptions recursively
+        return containsFocusGuardNode(root);
+    }
+
+    private boolean containsFocusGuardNode(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        CharSequence cd = node.getContentDescription();
+        if (cd != null && isFocusGuardRelated(cd.toString())) return true;
+        CharSequence txt = node.getText();
+        if (txt != null && isFocusGuardRelated(txt.toString())) return true;
+
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) continue;
+            boolean found = containsFocusGuardNode(child);
+            child.recycle();
+            if (found) return true;
+        }
+        return false;
+    }
+
+    // Ultra-fast back for self-protection (150ms cooldown)
+    private void goBackFast() {
+        long now = System.currentTimeMillis();
+        if (now - lastSelfProtTime > SELF_PROT_COOLDOWN) {
+            lastSelfProtTime = now;
+            performGlobalAction(GLOBAL_ACTION_BACK);
+        }
+    }
+
+    private boolean isSettingsPackage(String pkg) {
+        for (String s : SETTINGS_PACKAGES) {
+            if (s.equals(pkg)) return true;
+        }
+        return false;
+    }
+
     // ─── WhatsApp Channels Blocker ────────────────────────────────────────────
     private void handleWhatsApp() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
-
         try {
-            // Block if WhatsApp Updates/Status tab is selected
             if (isWhatsAppUpdatesTabActive(root)) {
                 goBack();
             }
@@ -69,7 +180,6 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isWhatsAppUpdatesTabActive(AccessibilityNodeInfo root) {
-        // Find "Updates" or "Status" node that is selected
         String[] keywords = {"Updates", "Status", "Channels"};
         for (String kw : keywords) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
@@ -96,24 +206,17 @@ public class BlockerService extends AccessibilityService {
         }
 
         // Inside a channel detection
-        String[] channelKeywords = {"Channel info", "Follow", "Following", "Forward", "Share link"};
+        String[] channelKeywords = {"Channel info", "Follow", "Following"};
         for (String kw : channelKeywords) {
             if (!root.findAccessibilityNodeInfosByText(kw).isEmpty()) {
-                // If it's a channel, it often has "Follow" or "Channel info"
-                // But we must be careful not to block normal chat forward/share
-                // Usually Channels have "Channel info" in the toolbar
-                if (kw.equals("Channel info") || kw.equals("Follow") || kw.equals("Following")) {
-                    return true;
-                }
+                return true;
             }
         }
-
         return false;
     }
 
     // ─── YouTube Shorts Blocker ───────────────────────────────────────────────
     private void handleYouTubeShorts(AccessibilityEvent event) {
-        // YouTube Shorts এর activity class name দিয়ে detect করো
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             CharSequence className = event.getClassName();
             if (className != null) {
@@ -129,18 +232,15 @@ public class BlockerService extends AccessibilityService {
         if (root == null) return;
 
         try {
-            // Shorts player এর characteristic elements খোঁজো
             if (findNodeWithContentDesc(root, "Shorts") != null) {
                 goBack();
                 return;
             }
 
-            // Shorts feed এ "Shorts" title দেখা যায়
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("Shorts");
             if (nodes != null) {
                 for (AccessibilityNodeInfo node : nodes) {
                     if (node != null) {
-                        // Shorts player এ থাকলে back দাও
                         AccessibilityNodeInfo parent = node.getParent();
                         if (parent != null) {
                             String parentClass = parent.getClassName() != null ?
@@ -170,7 +270,6 @@ public class BlockerService extends AccessibilityService {
         if (root == null) return;
 
         try {
-            // Instagram Reels player detect করো
             AccessibilityNodeInfo reelsNode = findNodeWithContentDesc(root, "Reels");
             if (reelsNode != null) {
                 reelsNode.recycle();
@@ -178,7 +277,6 @@ public class BlockerService extends AccessibilityService {
                 return;
             }
 
-            // "Reels" ট্যাব selected হলে
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("Reels");
             if (nodes != null) {
                 for (AccessibilityNodeInfo node : nodes) {
