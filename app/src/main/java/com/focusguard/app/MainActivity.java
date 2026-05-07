@@ -8,9 +8,11 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.widget.Button;
-import android.widget.Switch;
+import androidx.appcompat.widget.SwitchCompat;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.graphics.Color;
+import androidx.core.content.ContextCompat;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -93,27 +95,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateStatusUI() {
-        // Check accessibility service
-        boolean serviceEnabled = isAccessibilityServiceEnabled();
-        if (serviceEnabled) {
+        if (isAccessibilityServiceEnabled()) {
             tvServiceStatus.setText("✅ Accessibility Service is ON");
-            tvServiceStatus.setTextColor(0xFF4CAF50);
-            btnEnableService.setText("✅ ENABLED");
+            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_on));
         } else {
             tvServiceStatus.setText("❌ Accessibility Service is OFF");
-            tvServiceStatus.setTextColor(0xFFF44336);
-            btnEnableService.setText("Enable Accessibility Service");
+            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
         }
 
-        // Check device admin
-        boolean adminEnabled = dpm.isAdminActive(adminComponent);
-        if (adminEnabled) {
-            tvAdminStatus.setText("✅ Uninstall Protection is ON");
-            tvAdminStatus.setTextColor(0xFF4CAF50);
+        if (dpm.isAdminActive(adminComponent)) {
+            tvAdminStatus.setText("✅ Protection is ON");
+            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.status_on));
             btnEnableAdmin.setText("✅ PROTECTION ON");
         } else {
             tvAdminStatus.setText("❌ Protection is OFF");
-            tvAdminStatus.setTextColor(0xFFF44336);
+            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
             btnEnableAdmin.setText("Enable Device Admin");
         }
     }

@@ -107,7 +107,7 @@
                     android:textColor="#757575"/>
             </LinearLayout>
 
-            <Switch
+            <androidx.appcompat.widget.SwitchCompat
                 android:id="@+id/switchWhatsApp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -147,7 +147,7 @@
                     android:textColor="#757575"/>
             </LinearLayout>
 
-            <Switch
+            <androidx.appcompat.widget.SwitchCompat
                 android:id="@+id/switchYouTube"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -187,7 +187,7 @@
                     android:textColor="#757575"/>
             </LinearLayout>
 
-            <Switch
+            <androidx.appcompat.widget.SwitchCompat
                 android:id="@+id/switchInstagram"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
