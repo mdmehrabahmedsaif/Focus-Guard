@@ -104,6 +104,7 @@ public class BlockerService extends AccessibilityService {
 
         // ── A: PRE-EMPTIVE — User tapped our name in the list ────────────────
         if (type == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            // Check if user clicked FocusGuard in any settings list
             if (eventTextContainsLabel(event)) {
                 kickOut();
             }
@@ -114,7 +115,7 @@ public class BlockerService extends AccessibilityService {
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return;
 
-        // Check Accessibility Detail Page (via Description)
+        // Check Accessibility Detail Page (via unique description)
         if (prefs.getBoolean("block_accessibility", false)) {
             if (eventTextContainsDescription(event) || rootContainsDescription()) {
                 kickOut();
@@ -122,41 +123,48 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // Check Device Admin Page (via Label + Context)
+        // Check Device Admin Page (via app name + deactivation context)
         if (prefs.getBoolean("block_device_admin", false)) {
-            if (rootContainsAdminContext()) {
+            if (rootIsAdminDeactivationPage()) {
                 kickOut();
             }
         }
     }
 
-    private boolean rootContainsAdminContext() {
+    /**
+     * Target ONLY the deactivation page.
+     * We look for our app name AND the 'Deactivate' button together.
+     */
+    private boolean rootIsAdminDeactivationPage() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
         
         try {
             CharSequence rootPkg = root.getPackageName();
-            if (rootPkg == null) return false;
-            String pkgName = rootPkg.toString();
+            if (rootPkg == null || !rootPkg.toString().contains("settings")) return false;
 
-            // ONLY check if we are in a Settings app. 
-            // This prevents us from blocking our own app's UI!
-            if (!pkgName.contains("settings")) return false;
+            // Find "FocusGuard" on screen
+            List<AccessibilityNodeInfo> nameHits = root.findAccessibilityNodeInfosByText("FocusGuard");
+            if (nameHits != null && !nameHits.isEmpty()) {
+                // Now check for the "Deactivate" string which is unique to the deactivation screen
+                // We use multiple keywords to be safe across different Android versions
+                String[] deactKeywords = {"Deactivate", "নিষ্ক্রিয়", "Cancel"}; 
+                boolean hasDeactivate = false;
+                boolean hasCancel = false;
 
-            // Find our app name first
-            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
-            if (hits != null && !hits.isEmpty()) {
-                // Look for deactivation keywords specifically
-                String[] adminKeywords = {"Deactivate", "admin app", "device admin"};
-                for (String kw : adminKeywords) {
-                    List<AccessibilityNodeInfo> contextHits = root.findAccessibilityNodeInfosByText(kw);
-                    if (contextHits != null && !contextHits.isEmpty()) {
+                for (String kw : deactKeywords) {
+                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(kw);
+                    if (hits != null && !hits.isEmpty()) {
+                        if (kw.equals("Cancel")) hasCancel = true;
+                        else hasDeactivate = true;
                         for (AccessibilityNodeInfo n : hits) n.recycle();
-                        for (AccessibilityNodeInfo n : contextHits) n.recycle();
-                        return true;
                     }
                 }
-                for (AccessibilityNodeInfo n : hits) n.recycle();
+
+                for (AccessibilityNodeInfo n : nameHits) n.recycle();
+                
+                // If we see our name AND the Deactivate/Cancel pair, it's definitely the deactivation page
+                return hasDeactivate && hasCancel;
             }
             return false;
         } finally {
