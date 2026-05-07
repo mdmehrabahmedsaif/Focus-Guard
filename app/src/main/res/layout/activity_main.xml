@@ -72,6 +72,16 @@
                 android:backgroundTint="#1976D2"
                 android:textColor="#FFFFFF"
                 android:layout_marginTop="12dp"/>
+
+            <Button
+                android:id="@+id/btnDisableService"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Turn OFF Blocker Service"
+                android:backgroundTint="#B0BEC5"
+                android:textColor="#212121"
+                android:layout_marginTop="8dp"
+                android:visibility="gone"/>
         </LinearLayout>
 
         <!-- WhatsApp Block Card -->

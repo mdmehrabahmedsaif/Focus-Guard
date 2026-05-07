@@ -25,6 +25,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvServiceStatus;
     private TextView tvAdminStatus;
     private Button btnEnableService;
+    private Button btnDisableService;
     private Button btnEnableAdmin;
     private SwitchCompat switchWhatsApp;
     private SwitchCompat switchYouTube;
@@ -45,8 +46,9 @@ public class MainActivity extends AppCompatActivity {
         // Views
         tvServiceStatus = findViewById(R.id.tvServiceStatus);
         tvAdminStatus = findViewById(R.id.tvAdminStatus);
-        btnEnableService = findViewById(R.id.btnEnableService);
-        btnEnableAdmin = findViewById(R.id.btnEnableAdmin);
+        btnEnableService          = findViewById(R.id.btnEnableService);
+        btnDisableService         = findViewById(R.id.btnDisableService);
+        btnEnableAdmin            = findViewById(R.id.btnEnableAdmin);
         switchWhatsApp            = findViewById(R.id.switchWhatsApp);
         switchYouTube             = findViewById(R.id.switchYouTube);
         switchInstagram           = findViewById(R.id.switchInstagram);
@@ -83,11 +85,21 @@ public class MainActivity extends AppCompatActivity {
 
         // Enable Accessibility Service
         btnEnableService.setOnClickListener(v -> {
-            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-            startActivity(intent);
-            Toast.makeText(this,
-                "Find FocusGuard in the list and turn it ON",
+            openAccessibilitySettings();
+        });
+
+        // Disable Accessibility Service (Authorized bypass)
+        btnDisableService.setOnClickListener(v -> {
+            // 1. Temporarily disable the protection so the user can enter the page
+            prefs.edit().putBoolean("block_accessibility", false).apply();
+            switchBlockAccessibility.setChecked(false);
+            
+            Toast.makeText(this, 
+                "Protection disabled. You can now turn off the service.", 
                 Toast.LENGTH_LONG).show();
+
+            // 2. Open the settings
+            openAccessibilitySettings();
         });
 
         // Enable Device Admin
@@ -114,9 +126,13 @@ public class MainActivity extends AppCompatActivity {
         if (isAccessibilityServiceEnabled()) {
             tvServiceStatus.setText("✅ Accessibility Service is ON");
             tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_on));
+            btnEnableService.setVisibility(android.view.View.GONE);
+            btnDisableService.setVisibility(android.view.View.VISIBLE);
         } else {
             tvServiceStatus.setText("❌ Accessibility Service is OFF");
             tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
+            btnEnableService.setVisibility(android.view.View.VISIBLE);
+            btnDisableService.setVisibility(android.view.View.GONE);
         }
 
         if (dpm.isAdminActive(adminComponent)) {
@@ -144,5 +160,11 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == REQUEST_ENABLE_ADMIN) {
             updateStatusUI();
         }
+    private void openAccessibilitySettings() {
+        Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+        startActivity(intent);
+        Toast.makeText(this,
+            "Find FocusGuard Blocker in the list",
+            Toast.LENGTH_LONG).show();
     }
 }
