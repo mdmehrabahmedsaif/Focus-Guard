@@ -15,7 +15,7 @@ public class BlockerService extends AccessibilityService {
 
     private SharedPreferences prefs;
     private long lastBackTime = 0;
-    private static final long BACK_COOLDOWN = 1000; // 1 second cooldown
+    private static final long BACK_COOLDOWN = 500; // 0.5 second cooldown
 
     @Override
     public void onCreate() {
@@ -59,7 +59,7 @@ public class BlockerService extends AccessibilityService {
         if (root == null) return;
 
         try {
-            // Block if WhatsApp Updates tab is selected
+            // Block if WhatsApp Updates/Status tab is selected
             if (isWhatsAppUpdatesTabActive(root)) {
                 goBack();
             }
@@ -69,48 +69,43 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isWhatsAppUpdatesTabActive(AccessibilityNodeInfo root) {
-        // Find "Updates" node that is selected
-        // In newer versions, tabs are "Updates", "Chats", "Communities", "Calls"
-        List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("Updates");
-        if (nodes != null) {
-            for (AccessibilityNodeInfo node : nodes) {
-                if (node != null) {
-                    // Check if this node or its parent (tab button) is selected
-                    if (node.isSelected() || node.isChecked()) {
-                        node.recycle();
-                        return true;
-                    }
-                    
-                    // Sometimes the text itself is not selected, but its parent container is
-                    AccessibilityNodeInfo parent = node.getParent();
-                    if (parent != null) {
-                        if (parent.isSelected() || parent.isChecked()) {
-                            parent.recycle();
+        // Find "Updates" or "Status" node that is selected
+        String[] keywords = {"Updates", "Status", "Channels"};
+        for (String kw : keywords) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
+            if (nodes != null) {
+                for (AccessibilityNodeInfo node : nodes) {
+                    if (node != null) {
+                        if (node.isSelected() || node.isChecked()) {
                             node.recycle();
                             return true;
                         }
-                        parent.recycle();
+                        AccessibilityNodeInfo parent = node.getParent();
+                        if (parent != null) {
+                            if (parent.isSelected() || parent.isChecked()) {
+                                parent.recycle();
+                                node.recycle();
+                                return true;
+                            }
+                            parent.recycle();
+                        }
+                        node.recycle();
                     }
-                    node.recycle();
                 }
             }
         }
 
-        // Check by content description (sometimes text is not found)
-        AccessibilityNodeInfo updatesTab = findNodeWithContentDesc(root, "Updates");
-        if (updatesTab != null) {
-            if (updatesTab.isSelected() || updatesTab.isChecked()) {
-                updatesTab.recycle();
-                return true;
+        // Inside a channel detection
+        String[] channelKeywords = {"Channel info", "Follow", "Following", "Forward", "Share link"};
+        for (String kw : channelKeywords) {
+            if (!root.findAccessibilityNodeInfosByText(kw).isEmpty()) {
+                // If it's a channel, it often has "Follow" or "Channel info"
+                // But we must be careful not to block normal chat forward/share
+                // Usually Channels have "Channel info" in the toolbar
+                if (kw.equals("Channel info") || kw.equals("Follow") || kw.equals("Following")) {
+                    return true;
+                }
             }
-            updatesTab.recycle();
-        }
-
-        // If inside a channel, "Channel info" or "Follow" buttons are often visible
-        if (!root.findAccessibilityNodeInfosByText("Channel info").isEmpty() ||
-            !root.findAccessibilityNodeInfosByText("Follow").isEmpty() ||
-            !root.findAccessibilityNodeInfosByText("Following").isEmpty()) {
-            return true;
         }
 
         return false;
