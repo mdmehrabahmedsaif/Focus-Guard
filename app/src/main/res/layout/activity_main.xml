@@ -30,7 +30,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="মনোযোগ ধরে রাখো"
+                android:text="Stay Focused"
                 android:textColor="#BBDEFB"
                 android:textSize="14sp"
                 android:layout_marginTop="4dp"/>
@@ -50,7 +50,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="সার্ভিস স্ট্যাটাস"
+                android:text="Service Status"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:textColor="#212121"/>
@@ -59,7 +59,7 @@
                 android:id="@+id/tvServiceStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="❌ Accessibility Service বন্ধ আছে"
+                android:text="❌ Accessibility Service is OFF"
                 android:textSize="14sp"
                 android:textColor="#F44336"
                 android:layout_marginTop="8dp"/>
@@ -68,7 +68,7 @@
                 android:id="@+id/btnEnableService"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Accessibility Service চালু করো"
+                android:text="Enable Accessibility Service"
                 android:backgroundTint="#1976D2"
                 android:textColor="#FFFFFF"
                 android:layout_marginTop="12dp"/>
@@ -102,7 +102,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Updates ট্যাব ব্লক করবে"
+                    android:text="Blocks the Updates tab"
                     android:textSize="12sp"
                     android:textColor="#757575"/>
             </LinearLayout>
@@ -142,7 +142,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Shorts ভিডিও ব্লক করবে"
+                    android:text="Blocks Shorts videos"
                     android:textSize="12sp"
                     android:textColor="#757575"/>
             </LinearLayout>
@@ -182,7 +182,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Reels ব্লক করবে"
+                    android:text="Blocks Reels videos"
                     android:textSize="12sp"
                     android:textColor="#757575"/>
             </LinearLayout>
@@ -207,7 +207,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🔒 আনইন্সটল সুরক্ষা"
+                android:text="🔒 Uninstall Protection"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:textColor="#212121"/>
@@ -216,7 +216,7 @@
                 android:id="@+id/tvAdminStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="❌ সুরক্ষা চালু নেই"
+                android:text="❌ Protection is OFF"
                 android:textSize="14sp"
                 android:textColor="#F44336"
                 android:layout_marginTop="8dp"/>
@@ -225,7 +225,7 @@
                 android:id="@+id/btnEnableAdmin"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Device Admin চালু করো"
+                android:text="Enable Device Admin"
                 android:backgroundTint="#388E3C"
                 android:textColor="#FFFFFF"
                 android:layout_marginTop="12dp"/>

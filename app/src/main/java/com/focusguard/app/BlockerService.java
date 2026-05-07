@@ -59,8 +59,7 @@ public class BlockerService extends AccessibilityService {
         if (root == null) return;
 
         try {
-            // WhatsApp-এর Updates ট্যাব selected হলে back দেবে
-            // "Updates" ট্যাব টা selected/checked কিনা দেখো
+            // Block if WhatsApp Updates tab is selected
             if (isWhatsAppUpdatesTabActive(root)) {
                 goBack();
             }
@@ -70,19 +69,19 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isWhatsAppUpdatesTabActive(AccessibilityNodeInfo root) {
-        // "Updates" নামের node খোঁজো যেটা selected
-        // WhatsApp-এর নতুন ভার্সনে ট্যাবগুলোর নাম "Updates", "Chats", "Communities", "Calls"
+        // Find "Updates" node that is selected
+        // In newer versions, tabs are "Updates", "Chats", "Communities", "Calls"
         List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("Updates");
         if (nodes != null) {
             for (AccessibilityNodeInfo node : nodes) {
                 if (node != null) {
-                    // যদি এই নোডটা সিলেক্টেড থাকে অথবা এর প্যারেন্ট (ট্যাব বাটন) সিলেক্টেড থাকে
+                    // Check if this node or its parent (tab button) is selected
                     if (node.isSelected() || node.isChecked()) {
                         node.recycle();
                         return true;
                     }
                     
-                    // অনেক সময় টেক্সট নিজে সিলেক্টেড থাকে না, কিন্তু তার প্যারেন্ট কন্টেইনার থাকে
+                    // Sometimes the text itself is not selected, but its parent container is
                     AccessibilityNodeInfo parent = node.getParent();
                     if (parent != null) {
                         if (parent.isSelected() || parent.isChecked()) {
@@ -97,7 +96,7 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // কন্টেন্ট ডেসক্রিপশন দিয়ে চেক (অনেক সময় টেক্সট পাওয়া যায় না)
+        // Check by content description (sometimes text is not found)
         AccessibilityNodeInfo updatesTab = findNodeWithContentDesc(root, "Updates");
         if (updatesTab != null) {
             if (updatesTab.isSelected() || updatesTab.isChecked()) {
@@ -107,7 +106,7 @@ public class BlockerService extends AccessibilityService {
             updatesTab.recycle();
         }
 
-        // চ্যানেলের ভেতরে থাকলে "Channel info" বা "Channel settings" টাইপ কিছু দেখা যায়
+        // If inside a channel, "Channel info" or "Follow" buttons are often visible
         if (!root.findAccessibilityNodeInfosByText("Channel info").isEmpty() ||
             !root.findAccessibilityNodeInfosByText("Follow").isEmpty() ||
             !root.findAccessibilityNodeInfosByText("Following").isEmpty()) {

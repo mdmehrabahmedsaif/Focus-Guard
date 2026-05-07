@@ -68,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
             startActivity(intent);
             Toast.makeText(this,
-                "FocusGuard খুঁজে সেটা ON করো",
+                "Find FocusGuard in the list and turn it ON",
                 Toast.LENGTH_LONG).show();
         });
 
@@ -78,10 +78,10 @@ public class MainActivity extends AppCompatActivity {
                 Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
                 intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
                 intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                    "FocusGuard কে আনইন্সটল করা থেকে রক্ষা করতে এবং ফিচারগুলো কার্যকর রাখতে Device Admin পারমিশন প্রয়োজন।");
+                    "Device Admin permission is required to protect FocusGuard from being uninstalled.");
                 startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
             } else {
-                Toast.makeText(this, "✅ Device Admin ইতিমধ্যেই সক্রিয় আছে!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "✅ Device Admin is already active!", Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -96,25 +96,25 @@ public class MainActivity extends AppCompatActivity {
         // Check accessibility service
         boolean serviceEnabled = isAccessibilityServiceEnabled();
         if (serviceEnabled) {
-            tvServiceStatus.setText("✅ Accessibility Service চালু আছে");
+            tvServiceStatus.setText("✅ Accessibility Service is ON");
             tvServiceStatus.setTextColor(0xFF4CAF50);
-            btnEnableService.setText("✅ চালু আছে");
+            btnEnableService.setText("✅ ENABLED");
         } else {
-            tvServiceStatus.setText("❌ Accessibility Service বন্ধ আছে");
+            tvServiceStatus.setText("❌ Accessibility Service is OFF");
             tvServiceStatus.setTextColor(0xFFF44336);
-            btnEnableService.setText("Accessibility Service চালু করো");
+            btnEnableService.setText("Enable Accessibility Service");
         }
 
         // Check device admin
         boolean adminEnabled = dpm.isAdminActive(adminComponent);
         if (adminEnabled) {
-            tvAdminStatus.setText("✅ আনইন্সটল সুরক্ষা চালু আছে");
+            tvAdminStatus.setText("✅ Uninstall Protection is ON");
             tvAdminStatus.setTextColor(0xFF4CAF50);
-            btnEnableAdmin.setText("✅ সুরক্ষা চালু আছে");
+            btnEnableAdmin.setText("✅ PROTECTION ON");
         } else {
-            tvAdminStatus.setText("❌ সুরক্ষা চালু নেই");
+            tvAdminStatus.setText("❌ Protection is OFF");
             tvAdminStatus.setTextColor(0xFFF44336);
-            btnEnableAdmin.setText("Device Admin চালু করো");
+            btnEnableAdmin.setText("Enable Device Admin");
         }
     }
 
