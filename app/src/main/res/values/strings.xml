@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="accessibility_service_label">FocusGuard Blocker</string>
+    <string name="accessibility_description">FocusGuard ব্যবহার করে WhatsApp Channels, YouTube Shorts এবং Instagram Reels বন্ধ রাখে।</string>
+</resources>
