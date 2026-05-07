@@ -102,7 +102,15 @@ public class BlockerService extends AccessibilityService {
     private void selfProtect(AccessibilityEvent event) {
         // SAFETY FIRST: Never block our own app!
         CharSequence eventPkg = event.getPackageName();
-        if (eventPkg != null && eventPkg.toString().equals(getPackageName())) {
+        String packageName = (eventPkg != null) ? eventPkg.toString() : "";
+        
+        if (packageName.equals(getPackageName())) {
+            return;
+        }
+
+        // CRITICAL FIX: Only block inside Settings or System UI contexts.
+        // This prevents blocking the app launch from the Home Screen (Launcher).
+        if (!packageName.contains("settings") && !packageName.contains("android.settings")) {
             return;
         }
 
