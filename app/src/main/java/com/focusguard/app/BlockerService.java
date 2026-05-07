@@ -2,6 +2,8 @@ package com.focusguard.app;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -13,26 +15,41 @@ public class BlockerService extends AccessibilityService {
     private static final String YOUTUBE    = "com.google.android.youtube";
     private static final String INSTAGRAM  = "com.instagram.android";
 
-    // Android Settings packages (varies by OEM)
+    // Android Settings packages (covers stock + major OEMs)
     private static final String[] SETTINGS_PACKAGES = {
         "com.android.settings",
         "com.samsung.android.settings",
         "com.miui.settings",
         "com.oneplus.settings",
         "com.oppo.settings",
-        "com.realme.settings"
+        "com.realme.settings",
+        "com.huawei.settings"
     };
 
-    // Our own package name — used to detect when user is viewing FocusGuard's accessibility page
-    private static final String OUR_PACKAGE = "com.focusguard.app";
+    // The exact label shown in Accessibility list = "FocusGuard Blocker"
+    // We check for both parts individually to be resilient
+    private static final String[] SELF_KEYWORDS = {
+        "FocusGuard Blocker",
+        "FocusGuard",
+        "focusguard"
+    };
+
+    // Accessibility service detail Activity class names (AOSP + common OEMs)
+    private static final String[] ACCESSIBILITY_DETAIL_CLASSES = {
+        "com.android.settings.accessibility.AccessibilityServiceActivity",
+        "com.android.settings.SubSettings",
+        "com.android.settings.Settings$AccessibilityServiceDetailsActivity",
+        "com.samsung.android.settings.accessibility.AccessibilityDetailsActivity"
+    };
 
     private SharedPreferences prefs;
+    private final Handler     handler         = new Handler(Looper.getMainLooper());
 
     private long lastBackTime     = 0;
     private long lastSelfProtTime = 0;
 
-    private static final long BACK_COOLDOWN      = 500;  // 0.5s for normal blocking
-    private static final long SELF_PROT_COOLDOWN = 150;  // 0.15s — ultra-fast self-protection
+    private static final long BACK_COOLDOWN      = 500; // 0.5 s — normal blocking
+    private static final long SELF_PROT_COOLDOWN = 150; // 0.15 s — self-protection
 
     @Override
     public void onCreate() {
@@ -48,15 +65,13 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String packageName = pkg.toString();
 
-        int eventType = event.getEventType();
-
-        // ── Self-Protection: react to ALL event types for speed ──────────────
+        // ── SELF-PROTECTION (highest priority, fastest path) ─────────────────
         if (isSettingsPackage(packageName)) {
-            handleSelfProtection(event);
-            return; // Don't do further processing inside Settings
+            selfProtect(event);
+            return; // Never do other processing inside Settings
         }
 
-        // Only react on meaningful UI events for other apps
+        int eventType = event.getEventType();
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) {
@@ -66,92 +81,104 @@ public class BlockerService extends AccessibilityService {
         if (packageName.equals(WHATSAPP) && prefs.getBoolean("block_whatsapp", true)) {
             handleWhatsApp();
         }
-
         if (packageName.equals(YOUTUBE) && prefs.getBoolean("block_youtube", true)) {
             handleYouTubeShorts(event);
         }
-
         if (packageName.equals(INSTAGRAM) && prefs.getBoolean("block_instagram", true)) {
             handleInstagramReels();
         }
     }
 
-    // ─── Self-Protection: Block access to FocusGuard Accessibility Settings ──
-    private void handleSelfProtection(AccessibilityEvent event) {
-        // Fast-path: check event text first (cheapest check)
-        List<CharSequence> eventTexts = event.getText();
-        if (eventTexts != null) {
-            for (CharSequence text : eventTexts) {
-                if (text != null && isFocusGuardRelated(text.toString())) {
-                    goBackFast();
-                    return;
-                }
-            }
-        }
+    // ─── Self-Protection Core ─────────────────────────────────────────────────
+    /**
+     * Called whenever any Settings app fires an accessibility event.
+     * Strategy (fastest-to-slowest checks):
+     *   1. Check event class name for known AccessibilityServiceActivity classes
+     *   2. Check event text list for "FocusGuard" keywords
+     *   3. Scan root node tree (only on window-change events)
+     */
+    private void selfProtect(AccessibilityEvent event) {
 
-        // Check content description of the event source
-        CharSequence contentDesc = event.getContentDescription();
-        if (contentDesc != null && isFocusGuardRelated(contentDesc.toString())) {
-            goBackFast();
+        // 1. Class-name fast path — no node traversal needed
+        CharSequence className = event.getClassName();
+        if (className != null && isAccessibilityDetailPage(className.toString())) {
+            // On the accessibility detail page — now check if it's OUR service
+            // Event texts usually contain the service name on this screen
+            if (eventContainsSelfKeyword(event)) {
+                kickOut();
+                return;
+            }
+            // Even without text match, scan the root immediately
+            kickOutIfRootContainsSelf();
             return;
         }
 
-        // Deeper check: scan the root node for FocusGuard text
-        // Only do this on window-change events to avoid constant scanning
+        // 2. Event-text fast path
+        if (eventContainsSelfKeyword(event)) {
+            kickOut();
+            return;
+        }
+
+        // 3. Root-node scan — only on window-change events to avoid overhead
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            try {
-                if (isViewingFocusGuardAccessibility(root)) {
-                    goBackFast();
-                }
-            } finally {
-                root.recycle();
-            }
+            kickOutIfRootContainsSelf();
         }
     }
 
-    private boolean isFocusGuardRelated(String text) {
-        if (text == null) return false;
-        String lower = text.toLowerCase();
-        return lower.contains("focusguard") ||
-               lower.contains("focus guard");
-    }
-
-    private boolean isViewingFocusGuardAccessibility(AccessibilityNodeInfo root) {
-        // Look for "FocusGuard" text anywhere on the screen
-        List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("FocusGuard");
-        if (nodes != null && !nodes.isEmpty()) {
-            for (AccessibilityNodeInfo n : nodes) {
-                if (n != null) n.recycle();
-            }
-            return true;
+    private boolean isAccessibilityDetailPage(String className) {
+        for (String cls : ACCESSIBILITY_DETAIL_CLASSES) {
+            if (className.equals(cls)) return true;
         }
-
-        // Also check content descriptions recursively
-        return containsFocusGuardNode(root);
+        // Generic fallback: any Settings activity that has "Accessibility" in name
+        return className.toLowerCase().contains("accessibility");
     }
 
-    private boolean containsFocusGuardNode(AccessibilityNodeInfo node) {
-        if (node == null) return false;
-        CharSequence cd = node.getContentDescription();
-        if (cd != null && isFocusGuardRelated(cd.toString())) return true;
-        CharSequence txt = node.getText();
-        if (txt != null && isFocusGuardRelated(txt.toString())) return true;
+    private boolean eventContainsSelfKeyword(AccessibilityEvent event) {
+        List<CharSequence> texts = event.getText();
+        if (texts != null) {
+            for (CharSequence t : texts) {
+                if (t != null && containsSelfKeyword(t.toString())) return true;
+            }
+        }
+        CharSequence cd = event.getContentDescription();
+        if (cd != null && containsSelfKeyword(cd.toString())) return true;
+        return false;
+    }
 
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child == null) continue;
-            boolean found = containsFocusGuardNode(child);
-            child.recycle();
-            if (found) return true;
+    private void kickOutIfRootContainsSelf() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        try {
+            if (rootContainsSelfKeyword(root)) {
+                kickOut();
+            }
+        } finally {
+            root.recycle();
+        }
+    }
+
+    /** Searches UI tree breadth-first for any node whose text/cd contains our keywords */
+    private boolean rootContainsSelfKeyword(AccessibilityNodeInfo root) {
+        // Direct text search (fastest)
+        for (String kw : SELF_KEYWORDS) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(kw);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo n : hits) { if (n != null) n.recycle(); }
+                return true;
+            }
         }
         return false;
     }
 
-    // Ultra-fast back for self-protection (150ms cooldown)
-    private void goBackFast() {
+    private boolean containsSelfKeyword(String text) {
+        if (text == null) return false;
+        String lower = text.toLowerCase();
+        return lower.contains("focusguard");
+    }
+
+    /** Perform GLOBAL_ACTION_BACK with a 150 ms cooldown */
+    private void kickOut() {
         long now = System.currentTimeMillis();
         if (now - lastSelfProtTime > SELF_PROT_COOLDOWN) {
             lastSelfProtTime = now;
@@ -171,44 +198,34 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
-            if (isWhatsAppUpdatesTabActive(root)) {
-                goBack();
-            }
+            if (isWhatsAppUpdatesTabActive(root)) goBack();
         } finally {
             root.recycle();
         }
     }
 
     private boolean isWhatsAppUpdatesTabActive(AccessibilityNodeInfo root) {
-        String[] keywords = {"Updates", "Status", "Channels"};
-        for (String kw : keywords) {
+        for (String kw : new String[]{"Updates", "Status", "Channels"}) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
             if (nodes != null) {
                 for (AccessibilityNodeInfo node : nodes) {
-                    if (node != null) {
-                        if (node.isSelected() || node.isChecked()) {
-                            node.recycle();
-                            return true;
+                    if (node == null) continue;
+                    if (node.isSelected() || node.isChecked()) { node.recycle(); return true; }
+                    AccessibilityNodeInfo parent = node.getParent();
+                    if (parent != null) {
+                        if (parent.isSelected() || parent.isChecked()) {
+                            parent.recycle(); node.recycle(); return true;
                         }
-                        AccessibilityNodeInfo parent = node.getParent();
-                        if (parent != null) {
-                            if (parent.isSelected() || parent.isChecked()) {
-                                parent.recycle();
-                                node.recycle();
-                                return true;
-                            }
-                            parent.recycle();
-                        }
-                        node.recycle();
+                        parent.recycle();
                     }
+                    node.recycle();
                 }
             }
         }
-
-        // Inside a channel detection
-        String[] channelKeywords = {"Channel info", "Follow", "Following"};
-        for (String kw : channelKeywords) {
-            if (!root.findAccessibilityNodeInfosByText(kw).isEmpty()) {
+        for (String kw : new String[]{"Channel info", "Follow", "Following"}) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(kw);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo n : hits) { if (n != null) n.recycle(); }
                 return true;
             }
         }
@@ -218,81 +235,51 @@ public class BlockerService extends AccessibilityService {
     // ─── YouTube Shorts Blocker ───────────────────────────────────────────────
     private void handleYouTubeShorts(AccessibilityEvent event) {
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            CharSequence className = event.getClassName();
-            if (className != null) {
-                String cls = className.toString().toLowerCase();
-                if (cls.contains("shorts") || cls.contains("reel")) {
-                    goBack();
-                    return;
-                }
+            CharSequence cls = event.getClassName();
+            if (cls != null && cls.toString().toLowerCase().contains("shorts")) {
+                goBack(); return;
             }
         }
-
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
-
         try {
-            if (findNodeWithContentDesc(root, "Shorts") != null) {
-                goBack();
-                return;
-            }
-
+            if (findNodeWithContentDesc(root, "Shorts") != null) { goBack(); return; }
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("Shorts");
             if (nodes != null) {
                 for (AccessibilityNodeInfo node : nodes) {
-                    if (node != null) {
-                        AccessibilityNodeInfo parent = node.getParent();
-                        if (parent != null) {
-                            String parentClass = parent.getClassName() != null ?
-                                parent.getClassName().toString() : "";
-                            if (parentClass.contains("Tab") || parentClass.contains("Button")) {
-                                if (node.isSelected()) {
-                                    node.recycle();
-                                    parent.recycle();
-                                    goBack();
-                                    return;
-                                }
-                            }
-                            parent.recycle();
+                    if (node == null) continue;
+                    AccessibilityNodeInfo parent = node.getParent();
+                    if (parent != null) {
+                        String pc = parent.getClassName() != null ? parent.getClassName().toString() : "";
+                        if ((pc.contains("Tab") || pc.contains("Button")) && node.isSelected()) {
+                            node.recycle(); parent.recycle(); goBack(); return;
                         }
-                        node.recycle();
+                        parent.recycle();
                     }
+                    node.recycle();
                 }
             }
-        } finally {
-            root.recycle();
-        }
+        } finally { root.recycle(); }
     }
 
     // ─── Instagram Reels Blocker ──────────────────────────────────────────────
     private void handleInstagramReels() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
-
         try {
-            AccessibilityNodeInfo reelsNode = findNodeWithContentDesc(root, "Reels");
-            if (reelsNode != null) {
-                reelsNode.recycle();
-                goBack();
-                return;
-            }
-
+            AccessibilityNodeInfo r = findNodeWithContentDesc(root, "Reels");
+            if (r != null) { r.recycle(); goBack(); return; }
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("Reels");
             if (nodes != null) {
                 for (AccessibilityNodeInfo node : nodes) {
-                    if (node != null) {
-                        if (node.isSelected() || node.isChecked() || node.isFocused()) {
-                            node.recycle();
-                            goBack();
-                            return;
-                        }
-                        node.recycle();
+                    if (node == null) continue;
+                    if (node.isSelected() || node.isChecked() || node.isFocused()) {
+                        node.recycle(); goBack(); return;
                     }
+                    node.recycle();
                 }
             }
-        } finally {
-            root.recycle();
-        }
+        } finally { root.recycle(); }
     }
 
     // ─── Helper Methods ───────────────────────────────────────────────────────
@@ -307,9 +294,7 @@ public class BlockerService extends AccessibilityService {
     private AccessibilityNodeInfo findNodeWithContentDesc(AccessibilityNodeInfo node, String desc) {
         if (node == null) return null;
         if (node.getContentDescription() != null &&
-            node.getContentDescription().toString().contains(desc)) {
-            return node;
-        }
+            node.getContentDescription().toString().contains(desc)) return node;
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child == null) continue;
