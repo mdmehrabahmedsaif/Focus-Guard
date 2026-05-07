@@ -10,17 +10,22 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
+
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.2'
+      # এখানে gradle-version দেওয়ার দরকার নেই, এটি অটোমেটিক আপনার প্রোজেক্টের ভার্সন নিয়ে নেবে।
+
     - name: Build Debug APK
-      run: gradle assembleDebug
+      run: |
+        chmod +x gradlew
+        ./gradlew assembleDebug
+
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
