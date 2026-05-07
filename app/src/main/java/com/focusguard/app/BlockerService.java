@@ -55,17 +55,20 @@ public class BlockerService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
+
+        // FASTEST TRIGGER: Check for self-protection immediately
+        boolean blockAcc = prefs.getBoolean("block_accessibility", false);
+        boolean blockAdm = prefs.getBoolean("block_device_admin", false);
+        if (blockAcc || blockAdm) {
+            selfProtect(event);
+        }
+
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
         String packageName = pkg.toString();
 
-        // SELF-PROTECTION:
-        // Trigger if either Accessibility or Device Admin protection is ON.
-        boolean blockAcc = prefs.getBoolean("block_accessibility", false);
-        boolean blockAdm = prefs.getBoolean("block_device_admin", false);
-        if ((blockAcc || blockAdm) && !packageName.equals(getPackageName())) {
-            selfProtect(event);
-        }
+        // Already checked selfProtect above, but skip the rest if it's our app
+        if (packageName.equals(getPackageName())) return;
 
         int type = event.getEventType();
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&

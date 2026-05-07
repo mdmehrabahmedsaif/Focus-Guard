@@ -123,18 +123,25 @@ public class MainActivity extends AppCompatActivity {
         // Disable Device Admin (Instant Deactivation)
         btnDisableAdmin.setOnClickListener(v -> {
             try {
-                // 1. Remove the active admin permission instantly
+                // 1. Instant UI Feedback (Zero Delay)
+                tvAdminStatus.setText("❌ Protection is OFF");
+                tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
+                btnEnableAdmin.setVisibility(android.view.View.VISIBLE);
+                btnDisableAdmin.setVisibility(android.view.View.GONE);
+                
+                // 2. Remove the active admin permission
                 dpm.removeActiveAdmin(adminComponent);
                 
-                // 2. Disable the protection toggle as well
+                // 3. Update persistence
                 prefs.edit().putBoolean("block_device_admin", false).apply();
                 switchBlockDeviceAdmin.setChecked(false);
                 
-                // 3. Update UI
-                updateStatusUI();
-                
                 Toast.makeText(this, "🛡️ Device Admin Deactivated", Toast.LENGTH_SHORT).show();
+                
+                // 4. Final sync with system after a tiny delay
+                btnDisableAdmin.postDelayed(this::updateStatusUI, 100);
             } catch (Exception e) {
+                updateStatusUI();
                 Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
