@@ -120,20 +120,23 @@ public class MainActivity extends AppCompatActivity {
             startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
         });
 
-        // Disable Device Admin (Authorized bypass)
+        // Disable Device Admin (Instant Deactivation)
         btnDisableAdmin.setOnClickListener(v -> {
-            // 1. Temporarily disable the protection so the user can enter the page
-            prefs.edit().putBoolean("block_device_admin", false).apply();
-            switchBlockDeviceAdmin.setChecked(false);
-            
-            Toast.makeText(this, 
-                "Protection disabled. You can now deactivate admin.", 
-                Toast.LENGTH_LONG).show();
-
-            // 2. Open the deactivation screen
-            Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
-            intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
-            startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
+            try {
+                // 1. Remove the active admin permission instantly
+                dpm.removeActiveAdmin(adminComponent);
+                
+                // 2. Disable the protection toggle as well
+                prefs.edit().putBoolean("block_device_admin", false).apply();
+                switchBlockDeviceAdmin.setChecked(false);
+                
+                // 3. Update UI
+                updateStatusUI();
+                
+                Toast.makeText(this, "🛡️ Device Admin Deactivated", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
         });
     }
 
