@@ -89,23 +89,19 @@ public class BlockerService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
 
+        // 🚀 EXTREME SPEED TRIGGER: Check protection before ANYTHING else
+        selfProtect(event);
+
         // INSTANT STOP CHECK: If user turned off from app, do nothing.
         if (!prefs.getBoolean("is_service_active", true)) {
             return;
-        }
-
-        // FASTEST TRIGGER: Check for self-protection immediately
-        boolean blockAcc = prefs.getBoolean("block_accessibility", false);
-        boolean blockAdm = prefs.getBoolean("block_device_admin", false);
-        if (blockAcc || blockAdm) {
-            selfProtect(event);
         }
 
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
         String packageName = pkg.toString();
 
-        // Already checked selfProtect above, but skip the rest if it's our app
+        // Skip the rest if it's our app
         if (packageName.equals(getPackageName())) return;
 
         int type = event.getEventType();
@@ -138,6 +134,11 @@ public class BlockerService extends AccessibilityService {
      *                           We match by the UNIQUE DESCRIPTION here.
      */
     private void selfProtect(AccessibilityEvent event) {
+        // 0. QUICK EXIT: Only run if any protection is enabled
+        boolean blockAcc = prefs.getBoolean("block_accessibility", false);
+        boolean blockAdm = prefs.getBoolean("block_device_admin", false);
+        if (!blockAcc && !blockAdm) return;
+
         // 1. FASTEST BYPASS: If event is from our app, stop immediately.
         CharSequence eventPkg = event.getPackageName();
         String packageName = (eventPkg != null) ? eventPkg.toString().toLowerCase() : "";
@@ -300,22 +301,18 @@ public class BlockerService extends AccessibilityService {
         return text != null && text.toLowerCase().contains("focusguard");
     }
 
-    /** Launches the BlockActivity to show a "Window" and also kicks to Home screen. */
+    /** Extreme speed ejection with double punch. */
     private void kickOut() {
-        long now = System.currentTimeMillis();
-        if (now - lastSelfProtTime > SELF_PROT_COOLDOWN) {
-            lastSelfProtTime = now;
-            
-            // 1. PERFORM HOME ACTION IMMEDIATELY (Highest Priority)
-            performGlobalAction(GLOBAL_ACTION_HOME);
+        // 1. PERFORM DOUBLE ACTION IMMEDIATELY (Zero Delay)
+        performGlobalAction(GLOBAL_ACTION_HOME);
+        performGlobalAction(GLOBAL_ACTION_BACK);
 
-            // 2. Show the "Blocking Window" Activity in background
-            try {
-                Intent intent = new Intent(this, BlockActivity.class);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                startActivity(intent);
-            } catch (Exception ignored) {}
-        }
+        // 2. Show the "Blocking Window" Activity in background
+        try {
+            Intent intent = new Intent(this, BlockActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
+        } catch (Exception ignored) {}
     }
 
 
