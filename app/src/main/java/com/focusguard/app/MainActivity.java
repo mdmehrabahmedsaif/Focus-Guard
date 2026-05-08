@@ -79,10 +79,16 @@ public class MainActivity extends AppCompatActivity {
             BlockerService service = BlockerService.getInstance();
             if (service != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 service.disableService();
+                
+                // Immediate UI feedback
+                tvServiceStatus.setText("❌ Accessibility: OFF");
+                tvServiceStatus.setTextColor(Color.parseColor("#F44336"));
+                btnEnableService.setVisibility(View.VISIBLE);
+                btnDisableService.setVisibility(View.GONE);
             } else {
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
             }
-            v.postDelayed(this::syncUIWithState, 500);
+            v.postDelayed(this::syncUIWithState, 800);
         }));
 
         btnEnableAdmin.setOnClickListener(v -> {
@@ -93,8 +99,24 @@ public class MainActivity extends AppCompatActivity {
         });
 
         btnDisableAdmin.setOnClickListener(v -> promptPassword(() -> {
-            dpm.removeActiveAdmin(adminComponent);
-            syncUIWithState();
+            try {
+                // 1. PERFORM REMOVAL
+                dpm.removeActiveAdmin(adminComponent);
+                
+                // 2. OPTIMISTIC UI: Force update status immediately without waiting
+                tvAdminStatus.setText("❌ Admin Protection: OFF");
+                tvAdminStatus.setTextColor(Color.parseColor("#F44336"));
+                btnEnableAdmin.setVisibility(View.VISIBLE);
+                btnDisableAdmin.setVisibility(View.GONE);
+                pref.setDeviceAdminProtected(false);
+                
+                // 3. Delayed sync to confirm with system
+                v.postDelayed(this::syncUIWithState, 800);
+                
+                Toast.makeText(this, "🛡️ Admin Protection Disabled", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                syncUIWithState();
+            }
         }));
 
         btnSavePass.setOnClickListener(v -> {
