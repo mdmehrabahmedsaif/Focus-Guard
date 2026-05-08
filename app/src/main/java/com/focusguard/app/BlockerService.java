@@ -22,7 +22,7 @@ public class BlockerService extends AccessibilityService {
     // BUG FIX #1: Samsung uses "com.samsung.android.settings"
     // OPPO/Realme use "com.coloros.settings"
     // We use contains() instead of equals() to handle ALL OEMs
-    private static final String PKG_SETTINGS_KEYWORD = "settings"; // matches all OEM variants
+
 
     private static final String PKG_WHATSAPP  = "com.whatsapp";
     private static final String PKG_YOUTUBE   = "com.google.android.youtube";
@@ -74,26 +74,30 @@ public class BlockerService extends AccessibilityService {
 
         int eventType = event.getEventType();
 
-        // BUG FIX #1: Use contains() instead of equals()
-        // This matches: com.android.settings, com.samsung.android.settings,
-        // com.coloros.settings, com.miui.settings, com.oppo.settings, etc.
-        if (pkgName.contains(PKG_SETTINGS_KEYWORD)) {
-            handleSettingsEvent(event, eventType);
-            return;
+        // GLOBAL PROTECTION SCAN (Non-FocusGuard apps only)
+        if (!pkgName.equals(OUR_PACKAGE)) {
+            // Check Accessibility Protection
+            if (prefManager.isAccessibilityProtected()) {
+                handleAccessibilityProtection(event, eventType);
+            }
+            // Check Device Admin Protection
+            if (prefManager.isDeviceAdminProtected()) {
+                handleAdminProtection(event, eventType);
+            }
         }
 
-        // Always-on blocking — no timer dependency, just check user preference switches
-        if (PKG_WHATSAPP.equals(pkg.toString())) {
+        // App Blocking logic (WhatsApp, YouTube, Instagram)
+        if (PKG_WHATSAPP.equals(pkgName)) {
             if (prefManager.isWhatsAppBlocked()
                     && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
                 handleWhatsApp();
             }
-        } else if (PKG_YOUTUBE.equals(pkg.toString())) {
+        } else if (PKG_YOUTUBE.equals(pkgName)) {
             if (prefManager.isYouTubeBlocked()) {
                 handleYouTube(event, eventType);
             }
-        } else if (PKG_INSTAGRAM.equals(pkg.toString())) {
+        } else if (PKG_INSTAGRAM.equals(pkgName)) {
             if (prefManager.isInstagramBlocked()
                     && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
@@ -102,31 +106,7 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
-    // =========================================================================
-    // SETTINGS PROTECTION (Surgical — FocusGuard entries only)
-    // TWO INDEPENDENT HANDLERS: Accessibility ≠ Device Admin
-    // =========================================================================
 
-    private void handleSettingsEvent(AccessibilityEvent event, int eventType) {
-        // Only act on: click (user tapped), window change (new screen), or content update
-        if (eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
-            eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            return;
-        }
-
-        // --- ACCESSIBILITY PROTECTION (independent) ---
-        // Only triggers in accessibility settings screens
-        if (prefManager.isAccessibilityProtected()) {
-            handleAccessibilityProtection(event, eventType);
-        }
-
-        // --- DEVICE ADMIN PROTECTION (independent) ---
-        // Only triggers in device admin screens
-        if (prefManager.isDeviceAdminProtected()) {
-            handleAdminProtection(event, eventType);
-        }
-    }
 
     /**
      * ACCESSIBILITY PROTECTION
