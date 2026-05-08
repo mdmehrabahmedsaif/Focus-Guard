@@ -37,8 +37,8 @@ public class BlockerService extends AccessibilityService {
     private static final String SERVICE_LABEL_LOWER = "focusguard blocker";
 
     // ── Timing ────────────────────────────────────────────────────────────────
-    private static final long BACK_COOLDOWN      = 500; // ms — normal blocking
-    private static final long SELF_PROT_COOLDOWN = 250; // ms — slightly longer to allow Toast visibility
+    private static final long BACK_COOLDOWN      = 300; // ms — optimized
+    private static final long SELF_PROT_COOLDOWN = 10;  // ms — ULTRA FAST (Less than 0.1s)
 
     private SharedPreferences prefs;
     private long lastBackTime     = 0;
@@ -312,23 +312,15 @@ public class BlockerService extends AccessibilityService {
         if (now - lastSelfProtTime > SELF_PROT_COOLDOWN) {
             lastSelfProtTime = now;
             
-            // 1. Show the "Blocking Window" Activity
+            // 1. PERFORM HOME ACTION IMMEDIATELY (Highest Priority)
+            performGlobalAction(GLOBAL_ACTION_HOME);
+
+            // 2. Show the "Blocking Window" Activity in background
             try {
                 Intent intent = new Intent(this, BlockActivity.class);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 startActivity(intent);
-            } catch (Exception e) {
-                // Fallback to back action if activity fails to start
-                performGlobalAction(GLOBAL_ACTION_BACK);
-            }
-
-            // 2. Also perform HOME action for extra punch
-            performGlobalAction(GLOBAL_ACTION_HOME);
-            
-            // 3. Show a feedback toast
-            if (lastToast != null) lastToast.cancel();
-            lastToast = Toast.makeText(this, "🛡️ FocusGuard Protected", Toast.LENGTH_SHORT);
-            lastToast.show();
+            } catch (Exception ignored) {}
         }
     }
 
