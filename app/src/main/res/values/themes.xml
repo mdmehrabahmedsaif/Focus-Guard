@@ -1,12 +1,16 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Theme.FocusGuard" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">@color/primary_dark</item>
-        <item name="colorAccent">@color/accent_blue</item>
+        <!-- Futuristic brand colors -->
+        <item name="colorPrimary">@color/bg_midnight</item>
+        <item name="colorPrimaryDark">@color/bg_midnight</item>
+        <item name="colorAccent">@color/neon_blue</item>
         
-        <item name="android:statusBarColor">@color/primary</item>
-        <item name="android:windowBackground">@color/bg_light</item>
+        <!-- Background & Status Bar -->
+        <item name="android:statusBarColor">@color/bg_midnight</item>
+        <item name="android:windowBackground">@color/bg_midnight</item>
+        
+        <!-- Material Components Style -->
+        <item name="materialButtonStyle">@style/Widget.MaterialComponents.Button</item>
     </style>
 </resources>

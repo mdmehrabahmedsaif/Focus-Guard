@@ -20,4 +20,14 @@
     <!-- Gradients -->
     <color name="grad_start">#3B82F6</color>
     <color name="grad_end">#8B5CF6</color>
+
+    <!-- Essential & Compatibility Colors -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    
+    <!-- Aliases for old colors to fix build errors -->
+    <color name="primary">@color/bg_midnight</color>
+    <color name="primary_dark">@color/bg_midnight</color>
+    <color name="accent_blue">@color/neon_blue</color>
+    <color name="bg_light">@color/bg_midnight</color>
 </resources>
