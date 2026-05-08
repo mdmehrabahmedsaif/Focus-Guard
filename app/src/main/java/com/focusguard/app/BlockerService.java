@@ -90,7 +90,6 @@ public class BlockerService extends AccessibilityService {
         if (event == null) return;
 
         // 🛑 ABSOLUTE BYPASS: If this is our app, STOP IMMEDIATELY.
-        // This is the emergency fix to prevent being locked out of the app.
         CharSequence pkg = event.getPackageName();
         if (pkg != null && pkg.toString().equalsIgnoreCase(getPackageName())) {
             return;
@@ -104,12 +103,8 @@ public class BlockerService extends AccessibilityService {
             return;
         }
 
-        CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
         String packageName = pkg.toString();
-
-        // Skip the rest if it's our app
-        if (packageName.equals(getPackageName())) return;
 
         int type = event.getEventType();
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
@@ -146,40 +141,7 @@ public class BlockerService extends AccessibilityService {
         boolean blockAdm = prefs.getBoolean("block_device_admin", false);
         if (!blockAcc && !blockAdm) return;
 
-        // 1. FASTEST BYPASS: Never block if the event or active window is our app!
-        String myPkg = getPackageName().toLowerCase();
-        
-        CharSequence eventPkg = event.getPackageName();
-        if (eventPkg != null && eventPkg.toString().toLowerCase().equals(myPkg)) {
-            return;
-        }
-
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root != null) {
-            try {
-                CharSequence rootPkg = root.getPackageName();
-                if (rootPkg != null && rootPkg.toString().toLowerCase().equals(myPkg)) {
-                    return; 
-                }
-            } finally {
-                root.recycle();
-            }
-        }
-
-        int type = event.getEventType();
-        String pkgName = (eventPkg != null) ? eventPkg.toString().toLowerCase() : "";
-
-        // ── A: CLICK-BASED PROTECTION (Strict) ───────────────────────────────
-        // Only block if we are EXPLICITLY in a Settings app.
-        // This stops blocking when opening from Recents or Home Screen.
-        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || type == AccessibilityEvent.TYPE_VIEW_SELECTED) {
-            if (pkgName.contains("settings") && eventTextContainsFocusGuardKeyword(event)) {
-                kickOut();
-                return;
-            }
-        }
-
-        // 2. ROOT WINDOW BYPASS: For Page-based checks
+        // 1. BYPASS CHECK: Never block if the active window belongs to our app!
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root != null) {
             try {
@@ -191,6 +153,21 @@ public class BlockerService extends AccessibilityService {
                 root.recycle();
             }
         }
+
+        int type = event.getEventType();
+        CharSequence eventPkg = event.getPackageName();
+        String pkgName = (eventPkg != null) ? eventPkg.toString().toLowerCase() : "";
+
+        // ── A: CLICK-BASED PROTECTION (Strict) ───────────────────────────────
+        // Only block if we are EXPLICITLY in a Settings app.
+        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || type == AccessibilityEvent.TYPE_VIEW_SELECTED) {
+            if (pkgName.contains("settings") && eventTextContainsFocusGuardKeyword(event)) {
+                kickOut();
+                return;
+            }
+        }
+
+        // ── B: PAGE-BASED PROTECTION (The safety fallback) ───────────────────
 
         // ── B: PAGE-BASED PROTECTION (The safety fallback) ───────────────────
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
