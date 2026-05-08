@@ -158,9 +158,12 @@ public class BlockerService extends AccessibilityService {
         CharSequence eventPkg = event.getPackageName();
         String pkgName = (eventPkg != null) ? eventPkg.toString().toLowerCase() : "";
 
-        // ── A: CLICK-BASED PROTECTION (Strict) ───────────────────────────────
-        // Only block if we are EXPLICITLY in a Settings app.
-        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || type == AccessibilityEvent.TYPE_VIEW_SELECTED) {
+        // ── A: CLICK-BASED PROTECTION (Strict & Silent) ─────────────────────
+        // Trigger if we tap FocusGuard inside Settings
+        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || 
+            type == AccessibilityEvent.TYPE_VIEW_SELECTED ||
+            type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            
             if (pkgName.contains("settings") && eventTextContainsFocusGuardKeyword(event)) {
                 kickOut();
                 return;
@@ -299,18 +302,13 @@ public class BlockerService extends AccessibilityService {
         return text != null && text.toLowerCase().contains("focusguard");
     }
 
-    /** Extreme speed ejection with double punch. */
+    /** Extreme speed silent ejection. No more warning pages. */
     private void kickOut() {
         // 1. PERFORM DOUBLE ACTION IMMEDIATELY (Zero Delay)
         performGlobalAction(GLOBAL_ACTION_HOME);
         performGlobalAction(GLOBAL_ACTION_BACK);
-
-        // 2. Show the "Blocking Window" Activity in background
-        try {
-            Intent intent = new Intent(this, BlockActivity.class);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            startActivity(intent);
-        } catch (Exception ignored) {}
+        
+        // BlockActivity removed for zero-delay silent ejection.
     }
 
 
