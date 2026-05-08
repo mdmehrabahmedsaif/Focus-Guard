@@ -1,7 +1,6 @@
 package com.focusguard.app;
 
 import android.accessibilityservice.AccessibilityService;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
@@ -11,38 +10,29 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.List;
 
 /**
- * FocusGuard Accessibility Blocker Service
+ * FocusGuard Blocker Service — v1.6.1 Bug-Fixed
  *
- * Architecture: Event-driven, zero-polling, Handler-based instant exit.
- * Strategy:
- *   - Monitor TYPE_VIEW_CLICKED for pre-emptive detection (catches tap before screen loads)
- *   - Monitor TYPE_WINDOW_CONTENT_CHANGED for fast window scan
- *   - Monitor TYPE_WINDOW_STATE_CHANGED as fallback
- *   - Surgical detection: only block FocusGuard items, not full pages
- *
- * OEM Compatibility:
- *   - Samsung: Settings > Accessibility uses different activity but same text
- *   - Xiaomi: Uses com.android.settings with custom inner classes
- *   - Stock Android (AOSP): Standard com.android.settings behavior
- *   - Strategy: Text+Package detection > Class detection (OEM-agnostic)
+ * BUG FIXES in this version:
+ *   - FIX #1: OEM compatibility — Samsung/OPPO/Xiaomi settings package detection
+ *   - FIX #2: Instagram reels detection — removed unreliable content description check
+ *   - FIX #3: Removed unused ComponentName import
  */
 public class BlockerService extends AccessibilityService {
 
-    // Target packages to monitor
-    private static final String PKG_SETTINGS     = "com.android.settings";
-    private static final String PKG_WHATSAPP     = "com.whatsapp";
-    private static final String PKG_YOUTUBE      = "com.google.android.youtube";
-    private static final String PKG_INSTAGRAM    = "com.instagram.android";
+    // BUG FIX #1: Samsung uses "com.samsung.android.settings"
+    // OPPO/Realme use "com.coloros.settings"
+    // We use contains() instead of equals() to handle ALL OEMs
+    private static final String PKG_SETTINGS_KEYWORD = "settings"; // matches all OEM variants
 
-    // Our own package for self-detection
-    private static final String OUR_PACKAGE      = "com.focusguard.app";
-    private static final String SERVICE_LABEL    = "FocusGuard";
+    private static final String PKG_WHATSAPP  = "com.whatsapp";
+    private static final String PKG_YOUTUBE   = "com.google.android.youtube";
+    private static final String PKG_INSTAGRAM = "com.instagram.android";
 
-    // Handler for immediate, thread-safe execution on main looper
-    // WHY: performGlobalAction MUST run on main thread. Using Handler avoids ANR risk.
+    private static final String OUR_PACKAGE   = "com.focusguard.app";
+    private static final String SERVICE_LABEL = "FocusGuard";
+
+    // Pre-allocated Handler + Runnable for zero-GC hot path
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-
-    // Runnable for instant exit - pre-allocated to avoid object allocation on hot path
     private final Runnable kickOutRunnable = new Runnable() {
         @Override
         public void run() {
@@ -80,39 +70,37 @@ public class BlockerService extends AccessibilityService {
 
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
-        String pkgName = pkg.toString();
+        String pkgName = pkg.toString().toLowerCase();
 
         int eventType = event.getEventType();
 
-        // --- SELF PROTECTION: Settings package only ---
-        if (pkgName.equals(PKG_SETTINGS)) {
+        // BUG FIX #1: Use contains() instead of equals()
+        // This matches: com.android.settings, com.samsung.android.settings,
+        // com.coloros.settings, com.miui.settings, com.oppo.settings, etc.
+        if (pkgName.contains(PKG_SETTINGS_KEYWORD)) {
             handleSettingsEvent(event, eventType);
             return;
         }
 
-        // --- CONTENT BLOCKING ---
         if (!prefManager.isServiceActive()) return;
 
-        switch (pkgName) {
-            case PKG_WHATSAPP:
-                if (prefManager.isWhatsAppBlocked()
-                        && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                         || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
-                    handleWhatsApp();
-                }
-                break;
-            case PKG_YOUTUBE:
-                if (prefManager.isYouTubeBlocked()) {
-                    handleYouTube(event, eventType);
-                }
-                break;
-            case PKG_INSTAGRAM:
-                if (prefManager.isInstagramBlocked()
-                        && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                         || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
-                    handleInstagram();
-                }
-                break;
+        // Use direct string comparison (fast path, no toLowerCase allocation)
+        if (PKG_WHATSAPP.equals(pkgName) || pkg.toString().equals(PKG_WHATSAPP)) {
+            if (prefManager.isWhatsAppBlocked()
+                    && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                     || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
+                handleWhatsApp();
+            }
+        } else if (PKG_YOUTUBE.equals(pkgName) || pkg.toString().equals(PKG_YOUTUBE)) {
+            if (prefManager.isYouTubeBlocked()) {
+                handleYouTube(event, eventType);
+            }
+        } else if (PKG_INSTAGRAM.equals(pkgName) || pkg.toString().equals(PKG_INSTAGRAM)) {
+            if (prefManager.isInstagramBlocked()
+                    && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                     || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
+                handleInstagram();
+            }
         }
     }
 
@@ -121,53 +109,33 @@ public class BlockerService extends AccessibilityService {
     // =========================================================================
 
     private void handleSettingsEvent(AccessibilityEvent event, int eventType) {
-        // WHY these event types:
-        // TYPE_VIEW_CLICKED: Fires at the moment user taps — fastest possible detection
-        // TYPE_WINDOW_CONTENT_CHANGED: Fires when content shifts after tap
-        // TYPE_WINDOW_STATE_CHANGED: Fallback if above miss the transition
+        if (eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
+            eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            return;
+        }
 
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+        // Fast path: check event text first (zero cost if not our screen)
+        String eventText = getEventText(event).toLowerCase();
+        if (eventText.contains("focusguard") || eventText.contains("blocker")) {
+            triggerKickOut();
+            return;
+        }
 
-            // Step 1: Fast text check on the event itself (zero-allocation fast path)
-            String eventText = getEventText(event).toLowerCase();
-            if (eventText.contains("focusguard") || eventText.contains("blocker")) {
-                triggerKickOut();
-                return;
+        // Class-name based detection for specific screens
+        CharSequence cls = event.getClassName();
+        if (cls != null) {
+            String clsName = cls.toString().toLowerCase();
+            if (clsName.contains("deviceadmin") || clsName.contains("admin") ||
+                clsName.contains("accessibilitysettings") ||
+                clsName.contains("toggleaccessibilityservice") ||
+                clsName.contains("accessibilitydetails") ||
+                clsName.contains("accessibilityservicewarnin")) {
+                checkWindowForFocusGuard();
             }
-
-            // Step 2: Class-name check for known admin deactivation activities
-            CharSequence cls = event.getClassName();
-            if (cls != null) {
-                String clsName = cls.toString().toLowerCase();
-                // These activity class names indicate admin disable confirmation screen
-                if (clsName.contains("deviceadmin") || clsName.contains("admin")) {
-                    checkWindowForFocusGuard();
-                    return;
-                }
-                // Accessibility settings detail screen
-                if (clsName.contains("accessibilitysettings") || 
-                    clsName.contains("toggleaccessibilityservice") ||
-                    clsName.contains("accessibilitydetails")) {
-                    checkWindowForFocusGuard();
-                    return;
-                }
-            }
-
-            // Step 3: Window scan only when we suspect FocusGuard is visible
-            // WHY: Not every settings event needs a full tree scan.
-            // We only scan when class name OR event text hints at our screens.
         }
     }
 
-    /**
-     * Scans the active window tree for any mention of FocusGuard.
-     * If found, triggers instant HOME action.
-     *
-     * Performance note: getRootInActiveWindow() is expensive.
-     * Only called on suspected screens (class-name filtered).
-     */
     private void checkWindowForFocusGuard() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
@@ -180,37 +148,21 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
-    /**
-     * Surgical tree search for FocusGuard text.
-     * Iterative BFS preferred over recursive DFS to avoid StackOverflow on deep trees.
-     * Exits early on first match for minimum latency.
-     */
     private boolean nodeTreeContainsFocusGuard(AccessibilityNodeInfo root) {
-        // Fast path: use built-in text search (internally optimized by Android)
+        // Android's built-in text search is hardware-accelerated and faster than manual DFS
         List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(SERVICE_LABEL);
         if (hits != null && !hits.isEmpty()) {
-            for (AccessibilityNodeInfo n : hits) {
-                if (n != null) n.recycle();
-            }
+            for (AccessibilityNodeInfo n : hits) { if (n != null) n.recycle(); }
             return true;
         }
-        // Fallback: search by package name within nodes
         List<AccessibilityNodeInfo> pkgHits = root.findAccessibilityNodeInfosByText(OUR_PACKAGE);
         if (pkgHits != null && !pkgHits.isEmpty()) {
-            for (AccessibilityNodeInfo n : pkgHits) {
-                if (n != null) n.recycle();
-            }
+            for (AccessibilityNodeInfo n : pkgHits) { if (n != null) n.recycle(); }
             return true;
         }
         return false;
     }
 
-    /**
-     * Instant kick-out via HOME action.
-     * WHY post to mainHandler: performGlobalAction is thread-safe only on main thread.
-     * WHY removeCallbacks: Prevent double-fire if multiple events arrive at once.
-     * WHY postAtFrontOfQueue: Ensures this executes before any pending UI work.
-     */
     private void triggerKickOut() {
         mainHandler.removeCallbacks(kickOutRunnable);
         mainHandler.post(kickOutRunnable);
@@ -233,7 +185,6 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isWhatsAppUpdatesVisible(AccessibilityNodeInfo root) {
-        // Check all known tab label variants (including Bangla)
         String[] tabLabels = {"Updates", "Status", "Channels", "আপডেট", "স্ট্যাটাস", "চ্যানেল"};
         for (String label : tabLabels) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(label);
@@ -250,7 +201,7 @@ public class BlockerService extends AccessibilityService {
 
     private boolean isAncestorSelected(AccessibilityNodeInfo node) {
         AccessibilityNodeInfo current = node.getParent();
-        int depth = 0; // Limit depth to avoid infinite traversal in cyclic graphs
+        int depth = 0;
         while (current != null && depth < 6) {
             if (current.isSelected()) {
                 current.recycle();
@@ -270,7 +221,6 @@ public class BlockerService extends AccessibilityService {
     // =========================================================================
 
     private void handleYouTube(AccessibilityEvent event, int eventType) {
-        // Fast path: class name detection (no tree scan needed)
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             CharSequence cls = event.getClassName();
             if (cls != null && cls.toString().toLowerCase().contains("shorts")) {
@@ -305,23 +255,16 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
+            // BUG FIX #2: Removed unreliable content description check.
+            // Previously required cd != null which caused many misses.
+            // Now blocks as soon as Reels node is found in the tree.
             List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Reels");
             if (hits == null || hits.isEmpty()) {
                 hits = root.findAccessibilityNodeInfosByText("রিলস");
             }
             if (hits != null && !hits.isEmpty()) {
-                for (AccessibilityNodeInfo n : hits) {
-                    if (n != null) {
-                        // Only back-off if reels tab is in navigation position
-                        CharSequence cd = n.getContentDescription();
-                        if (cd != null) {
-                            n.recycle();
-                            performGlobalAction(GLOBAL_ACTION_BACK);
-                            return;
-                        }
-                        n.recycle();
-                    }
-                }
+                for (AccessibilityNodeInfo n : hits) { if (n != null) n.recycle(); }
+                performGlobalAction(GLOBAL_ACTION_BACK);
             }
         } finally {
             root.recycle();
@@ -346,7 +289,5 @@ public class BlockerService extends AccessibilityService {
     }
 
     @Override
-    public void onInterrupt() {
-        // Required override — no action needed
-    }
+    public void onInterrupt() {}
 }

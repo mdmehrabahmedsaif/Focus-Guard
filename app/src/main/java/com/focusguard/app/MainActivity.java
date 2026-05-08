@@ -156,7 +156,11 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("Authentication required.")
                 .setView(input)
                 .setPositiveButton("VERIFY", (dialog, which) -> {
-                    if (input.getText().toString().equals(pref.getEmergencyPassword())) {
+                    String entered = input.getText().toString();
+                    String saved   = pref.getEmergencyPassword();
+                    // BUG FIX #6: Require non-empty password match
+                    // Previously an empty saved password would allow free bypass
+                    if (!entered.isEmpty() && !saved.isEmpty() && entered.equals(saved)) {
                         pref.setTimerEndTime(0);
                         if (countDownTimer != null) countDownTimer.cancel();
                         onVerify.run();
@@ -173,7 +177,10 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean isAccessibilityServiceEnabled() {
         AccessibilityManager am = (AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);
-        List<AccessibilityServiceInfo> enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC);
+        // BUG FIX #5: Use FEEDBACK_ALL_MASK instead of FEEDBACK_GENERIC
+        // FEEDBACK_GENERIC misses services on some OEMs (Samsung, Xiaomi)
+        List<AccessibilityServiceInfo> enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+        if (enabledServices == null) return false;
         for (AccessibilityServiceInfo service : enabledServices) {
             if (service.getResolveInfo().serviceInfo.packageName.equals(getPackageName())) return true;
         }
@@ -266,8 +273,14 @@ public class MainActivity extends AppCompatActivity {
 
     private int getVal(EditText et) {
         if (et == null) return 0;
-        String s = et.getText().toString();
-        return (s.isEmpty()) ? 0 : Integer.parseInt(s);
+        String s = et.getText().toString().trim();
+        if (s.isEmpty()) return 0;
+        // BUG FIX #4: Wrap parseInt in try-catch to prevent NumberFormatException crash
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     @Override protected void onResume() { super.onResume(); syncUIWithState(); }
