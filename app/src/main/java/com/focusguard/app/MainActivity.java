@@ -29,7 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvAdminStatus, tvAccessibilityStatus;
     private View btnEnableAdmin, btnDisableAdmin, btnEnableAccessibility, btnDisableAccessibility;
     private View btnSavePassword;
-    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAcc, swBlockAdmin;
+    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAcc, swBlockAdmin, swBlockUninstall;
     private EditText etPassword;
 
     private static final int REQ_ADMIN = 101;
@@ -71,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
         swInstagram = findViewById(R.id.rowInstagram).findViewById(R.id.itemSwitch);
         swBlockAcc   = findViewById(R.id.switchBlockAccessibility);
         swBlockAdmin = findViewById(R.id.switchBlockDeviceAdmin);
+        swBlockUninstall = findViewById(R.id.switchBlockUninstall);
 
         if (etPassword != null) {
             etPassword.setText(pref.getEmergencyPassword());
@@ -136,6 +137,8 @@ public class MainActivity extends AppCompatActivity {
             pref.setAccessibilityProtected(checked));
         swBlockAdmin.setOnCheckedChangeListener((b, checked) ->
             pref.setDeviceAdminProtected(checked));
+        swBlockUninstall.setOnCheckedChangeListener((b, checked) ->
+            pref.setUninstallProtected(checked));
 
         // --- Save Password ---
         btnSavePassword.setOnClickListener(v -> {
@@ -235,6 +238,7 @@ public class MainActivity extends AppCompatActivity {
         // Protection lock switches (independent)
         swBlockAcc.setChecked(pref.isAccessibilityProtected());
         swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
+        swBlockUninstall.setChecked(pref.isUninstallProtected());
     }
 
     @Override protected void onResume()  { super.onResume();  syncUIWithState(); }

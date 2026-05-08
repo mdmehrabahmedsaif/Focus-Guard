@@ -84,6 +84,10 @@ public class BlockerService extends AccessibilityService {
             if (prefManager.isDeviceAdminProtected()) {
                 handleAdminProtection(event, eventType);
             }
+            // Check Uninstall Protection
+            if (prefManager.isUninstallProtected()) {
+                handleUninstallProtection(event, eventType);
+            }
         }
 
         // App Blocking logic (WhatsApp, YouTube, Instagram)
@@ -230,6 +234,51 @@ public class BlockerService extends AccessibilityService {
             }
         }
     }
+
+    /**
+     * UNINSTALL PROTECTION
+     * Allows viewing App Info, but blocks clicking the "Uninstall" button.
+     */
+    private void handleUninstallProtection(AccessibilityEvent event, int eventType) {
+        // We check on click and on window changes
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            try {
+                // 1. Check if we are in FocusGuard's App Info page
+                List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                if (hits == null || hits.isEmpty()) return;
+                for (AccessibilityNodeInfo n : hits) n.recycle();
+
+                // 2. If it's a click, check if the user clicked "Uninstall"
+                if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                    AccessibilityNodeInfo source = event.getSource();
+                    if (source != null) {
+                        String txt = getEventText(event).toLowerCase();
+                        if (txt.contains("uninstall") || txt.contains("আনইনস্টল")) {
+                            source.recycle();
+                            triggerKickOut();
+                            return;
+                        }
+                        source.recycle();
+                    }
+                }
+
+                // 3. Fallback: if an uninstall confirmation dialog opens
+                boolean isUninstallDialog = !root.findAccessibilityNodeInfosByText("Do you want to uninstall").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("আপনি কি আনইনস্টল").isEmpty();
+                if (isUninstallDialog) {
+                    triggerKickOut();
+                }
+            } finally {
+                root.recycle();
+            }
+        }
+    }
+
 
 
     private void triggerKickOut() {

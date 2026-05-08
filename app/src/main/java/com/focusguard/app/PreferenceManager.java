@@ -13,6 +13,7 @@ public class PreferenceManager {
     private static final String KEY_BLOCK_INSTAGRAM = "block_instagram";
     private static final String KEY_BLOCK_ACCESSIBILITY = "block_accessibility";
     private static final String KEY_BLOCK_DEVICE_ADMIN = "block_device_admin";
+    private static final String KEY_BLOCK_UNINSTALL = "block_uninstall";
     private static final String KEY_EMERGENCY_PASSWORD = "emergency_password";
     private static final String KEY_TIMER_END_TIME = "timer_end_time";
 
@@ -68,6 +69,14 @@ public class PreferenceManager {
 
     public boolean isDeviceAdminProtected() {
         return prefs.getBoolean(KEY_BLOCK_DEVICE_ADMIN, false);
+    }
+
+    public void setUninstallProtected(boolean protected_un) {
+        prefs.edit().putBoolean(KEY_BLOCK_UNINSTALL, protected_un).apply();
+    }
+
+    public boolean isUninstallProtected() {
+        return prefs.getBoolean(KEY_BLOCK_UNINSTALL, false);
     }
 
     public void setEmergencyPassword(String password) {
