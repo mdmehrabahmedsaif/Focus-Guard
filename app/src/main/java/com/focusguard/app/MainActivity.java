@@ -95,6 +95,8 @@ public class MainActivity extends AppCompatActivity {
 
         // Enable Accessibility Service
         btnEnableService.setOnClickListener(v -> {
+            // Ensure logic is active when enabling
+            prefs.edit().putBoolean("is_service_active", true).apply();
             openAccessibilitySettings();
         });
 
@@ -104,12 +106,19 @@ public class MainActivity extends AppCompatActivity {
             prefs.edit().putBoolean("block_accessibility", false).apply();
             switchBlockAccessibility.setChecked(false);
             
-            Toast.makeText(this, 
-                "Protection disabled. You can now turn off the service.", 
-                Toast.LENGTH_LONG).show();
-
-            // 2. Open the settings
-            openAccessibilitySettings();
+            // 2. Try Instant Stop (Android 7.0+)
+            BlockerService service = BlockerService.getInstance();
+            if (service != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                service.disableService();
+                Toast.makeText(this, "🛡️ Service Stopped Instantly", Toast.LENGTH_SHORT).show();
+                updateStatusUI();
+            } else {
+                // Fallback for older Android (Open settings)
+                Toast.makeText(this, 
+                    "Opening Settings. Please turn off FocusGuard Blocker.", 
+                    Toast.LENGTH_LONG).show();
+                openAccessibilitySettings();
+            }
         });
 
         // Enable Device Admin
@@ -154,15 +163,25 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateStatusUI() {
-        if (isAccessibilityServiceEnabled()) {
+        boolean isServiceEnabledInSettings = isAccessibilityServiceEnabled();
+        boolean isServiceLogicActive = prefs.getBoolean("is_service_active", true);
+
+        if (isServiceEnabledInSettings && isServiceLogicActive) {
             tvServiceStatus.setText("✅ Accessibility Service is ON");
             tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_on));
             btnEnableService.setVisibility(android.view.View.GONE);
             btnDisableService.setVisibility(android.view.View.VISIBLE);
+        } else if (isServiceEnabledInSettings && !isServiceLogicActive) {
+            tvServiceStatus.setText("⚠️ Service is PAUSED (Logic Off)");
+            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
+            btnEnableService.setVisibility(android.view.View.VISIBLE);
+            btnEnableService.setText("Resume Blocker Service");
+            btnDisableService.setVisibility(android.view.View.GONE);
         } else {
             tvServiceStatus.setText("❌ Accessibility Service is OFF");
             tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
             btnEnableService.setVisibility(android.view.View.VISIBLE);
+            btnEnableService.setText("Enable Accessibility Service");
             btnDisableService.setVisibility(android.view.View.GONE);
         }
 

@@ -45,16 +45,54 @@ public class BlockerService extends AccessibilityService {
     private long lastSelfProtTime = 0;
     private Toast lastToast;
 
+    private static BlockerService instance;
+
+    public static BlockerService getInstance() {
+        return instance;
+    }
+
     @Override
-    public void onCreate() {
-        super.onCreate();
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        instance = this;
         prefs = getSharedPreferences("settings", MODE_PRIVATE);
+    }
+
+    @Override
+    public boolean onUnbind(Intent intent) {
+        instance = null;
+        return super.onUnbind(intent);
+    }
+
+    /**
+     * Programmatically disables the accessibility service (Android 7.0+ only).
+     */
+    public void disableService() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            disableSelf();
+        }
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && "ACTION_DISABLE_SELF".equals(intent.getAction())) {
+            // Android 7.0+ (API 24) support for actual system disabling
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                disableSelf();
+            }
+        }
+        return super.onStartCommand(intent, flags, startId);
     }
 
     // =========================================================================
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
+
+        // INSTANT STOP CHECK: If user turned off from app, do nothing.
+        if (!prefs.getBoolean("is_service_active", true)) {
+            return;
+        }
 
         // FASTEST TRIGGER: Check for self-protection immediately
         boolean blockAcc = prefs.getBoolean("block_accessibility", false);
@@ -92,9 +130,6 @@ public class BlockerService extends AccessibilityService {
      *  A) TYPE_VIEW_CLICKED   → User just tapped "FocusGuard Blocker" in the list.
      *                           Kick IMMEDIATELY — detail page hasn't loaded yet.
      *                           Fastest possible response.
-     *
-     *  B) TYPE_WINDOW_STATE_CHANGED → New sc    /**
-     * 3-event strategy for maximum reliability on Samsung and others:
      *
      *  A) TYPE_VIEW_CLICKED   → User tapped the name in the list.
      *                           We match by the LABEL here.
@@ -231,7 +266,7 @@ public class BlockerService extends AccessibilityService {
             if (nameHits != null && !nameHits.isEmpty()) {
                 // Now check for the "Deactivate" string which is unique to the deactivation screen
                 // We use multiple keywords to be safe across different Android versions
-                String[] deactKeywords = {"Deactivate", "নিষ্ক্রিয়", "Cancel"}; 
+                String[] deactKeywords = {"Deactivate", "নিষ্ক্রিয়", "বন্ধ করুন", "Cancel", "বাতিল"}; 
                 boolean hasDeactivate = false;
                 boolean hasCancel = false;
 
@@ -306,28 +341,41 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
-            if (isWhatsAppUpdatesTabActive(root)) goBack();
-        } finally { root.recycle(); }
+            if (isWhatsAppUpdatesTabActive(root)) {
+                goBack();
+            }
+        } finally {
+            root.recycle();
+        }
     }
 
     private boolean isWhatsAppUpdatesTabActive(AccessibilityNodeInfo root) {
-        for (String kw : new String[]{"Updates", "Status", "Channels"}) {
+        // Multi-language support: English and Bengali
+        String[] keywords = {"Updates", "Status", "Channels", "আপডেট", "স্ট্যাটাস", "চ্যানেল"};
+        for (String kw : keywords) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
             if (nodes == null) continue;
             for (AccessibilityNodeInfo node : nodes) {
                 if (node == null) continue;
-                if (node.isSelected() || node.isChecked()) { node.recycle(); return true; }
+                if (node.isSelected() || node.isChecked()) {
+                    node.recycle();
+                    return true;
+                }
                 AccessibilityNodeInfo parent = node.getParent();
                 if (parent != null) {
                     if (parent.isSelected() || parent.isChecked()) {
-                        parent.recycle(); node.recycle(); return true;
+                        parent.recycle();
+                        node.recycle();
+                        return true;
                     }
                     parent.recycle();
                 }
                 node.recycle();
             }
         }
-        for (String kw : new String[]{"Channel info", "Follow", "Following"}) {
+        
+        String[] infoKeywords = {"Channel info", "Follow", "Following", "চ্যানেলের তথ্য", "অনুসরণ করুন"};
+        for (String kw : infoKeywords) {
             List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(kw);
             if (hits != null && !hits.isEmpty()) {
                 for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
@@ -343,30 +391,48 @@ public class BlockerService extends AccessibilityService {
     private void handleYouTubeShorts(AccessibilityEvent event) {
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             CharSequence cls = event.getClassName();
-            if (cls != null && cls.toString().toLowerCase().contains("shorts")) {
-                goBack(); return;
+            if (cls != null) {
+                String className = cls.toString().toLowerCase();
+                if (className.contains("shorts")) {
+                    goBack();
+                    return;
+                }
             }
         }
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
-            if (findNodeWithContentDesc(root, "Shorts") != null) { goBack(); return; }
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("Shorts");
-            if (nodes != null) {
-                for (AccessibilityNodeInfo node : nodes) {
-                    if (node == null) continue;
-                    AccessibilityNodeInfo parent = node.getParent();
-                    if (parent != null) {
-                        String pc = parent.getClassName() != null ? parent.getClassName().toString() : "";
-                        if ((pc.contains("Tab") || pc.contains("Button")) && node.isSelected()) {
-                            node.recycle(); parent.recycle(); goBack(); return;
+            // Check content description
+            if (findNodeWithContentDesc(root, "Shorts") != null || findNodeWithContentDesc(root, "শর্টস") != null) {
+                goBack();
+                return;
+            }
+            
+            // Check text
+            String[] keywords = {"Shorts", "শর্টস"};
+            for (String kw : keywords) {
+                List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
+                if (nodes != null) {
+                    for (AccessibilityNodeInfo node : nodes) {
+                        if (node == null) continue;
+                        AccessibilityNodeInfo parent = node.getParent();
+                        if (parent != null) {
+                            String pc = parent.getClassName() != null ? parent.getClassName().toString() : "";
+                            if ((pc.contains("Tab") || pc.contains("Button")) && node.isSelected()) {
+                                node.recycle();
+                                parent.recycle();
+                                goBack();
+                                return;
+                            }
+                            parent.recycle();
                         }
-                        parent.recycle();
+                        node.recycle();
                     }
-                    node.recycle();
                 }
             }
-        } finally { root.recycle(); }
+        } finally {
+            root.recycle();
+        }
     }
 
     // =========================================================================
@@ -376,19 +442,35 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
+            // Check Content Description
             AccessibilityNodeInfo r = findNodeWithContentDesc(root, "Reels");
-            if (r != null) { r.recycle(); goBack(); return; }
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("Reels");
-            if (nodes != null) {
-                for (AccessibilityNodeInfo node : nodes) {
-                    if (node == null) continue;
-                    if (node.isSelected() || node.isChecked() || node.isFocused()) {
-                        node.recycle(); goBack(); return;
+            if (r == null) r = findNodeWithContentDesc(root, "রিলস");
+            
+            if (r != null) {
+                r.recycle();
+                goBack();
+                return;
+            }
+            
+            // Check Text
+            String[] keywords = {"Reels", "রিলস"};
+            for (String kw : keywords) {
+                List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
+                if (nodes != null) {
+                    for (AccessibilityNodeInfo node : nodes) {
+                        if (node == null) continue;
+                        if (node.isSelected() || node.isChecked() || node.isFocused()) {
+                            node.recycle();
+                            goBack();
+                            return;
+                        }
+                        node.recycle();
                     }
-                    node.recycle();
                 }
             }
-        } finally { root.recycle(); }
+        } finally {
+            root.recycle();
+        }
     }
 
     // =========================================================================
