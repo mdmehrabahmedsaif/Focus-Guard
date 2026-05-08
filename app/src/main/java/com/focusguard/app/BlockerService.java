@@ -373,6 +373,7 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isWhatsAppRestrictedVisible(AccessibilityNodeInfo root) {
+        // 1. Check Tabs (Updates, Status, Channels)
         String[] keywords = {"Updates", "Status", "Channels", "আপডেট", "স্ট্যাটাস", "চ্যানেল"};
         for (String kw : keywords) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
@@ -393,6 +394,15 @@ public class BlockerService extends AccessibilityService {
                 }
             }
         }
+
+        // 2. Check for being INSIDE a Channel list or search
+        String[] channelSpecifics = {"Find channels", "Channels to follow", "Browse channels", "চ্যানেল খুঁজুন", "Follow", "Following"};
+        for (String spec : channelSpecifics) {
+            if (!root.findAccessibilityNodeInfosByText(spec).isEmpty()) {
+                return true;
+            }
+        }
+        
         return false;
     }
 
@@ -400,6 +410,7 @@ public class BlockerService extends AccessibilityService {
         if (text == null) return false;
         String t = text.toLowerCase();
         return t.contains("updates") || t.contains("status") || t.contains("channels") ||
+               t.contains("follow") || t.contains("following") ||
                t.contains("আপডেট") || t.contains("স্ট্যাটাস") || t.contains("চ্যানেল");
     }
 
