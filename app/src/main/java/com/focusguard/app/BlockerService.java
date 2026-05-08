@@ -122,36 +122,41 @@ public class BlockerService extends AccessibilityService {
      * We check BOTH for maximum OEM compatibility.
      */
     private void handleAccessibilityProtection(AccessibilityEvent event, int eventType) {
-        // --- CLICK DETECTION (Instant) ---
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            AccessibilityNodeInfo source = event.getSource();
-            if (source != null) {
-                // To be surgical, we check if the click text is Accessibility-related
-                // OR if it's the FocusGuard item in the Accessibility list.
-                String text = getEventText(event).toLowerCase();
-                boolean isAccListClick = text.contains("focusguard") && 
-                                        (text.contains("off") || text.contains("on") || text.contains("বন্ধ") || text.contains("চালু"));
-                
-                if (isAccListClick || isFocusGuardNode(source)) {
-                    source.recycle();
-                    triggerKickOut();
-                    return;
-                }
-                source.recycle();
-            }
-        }
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        
+        try {
+            // --- CONTEXT VERIFICATION ---
+            // Ensure we are actually in an Accessibility-related screen
+            boolean isAccessibilityWindow = !root.findAccessibilityNodeInfosByText("Accessibility").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("এক্সেসিবিলিটি").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("Downloaded services").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("ডাউনলোড করা পরিষেবা").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty();
+            
+            if (!isAccessibilityWindow) return;
 
-        // --- SCREEN DETECTION (Window change only) ---
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            try {
+            // --- CLICK DETECTION ---
+            if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                AccessibilityNodeInfo source = event.getSource();
+                if (source != null) {
+                    if (isFocusGuardNode(source)) {
+                        source.recycle();
+                        triggerKickOut();
+                        return;
+                    }
+                    source.recycle();
+                }
+            }
+
+            // --- SCREEN DETECTION ---
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 if (isFocusGuardDetailScreen(root)) {
                     triggerKickOut();
                 }
-            } finally {
-                root.recycle();
             }
+        } finally {
+            root.recycle();
         }
     }
 
@@ -206,59 +211,54 @@ public class BlockerService extends AccessibilityService {
      * Stage 2: Block the "Activate/Deactivate" confirmation screen.
      */
     private void handleAdminProtection(AccessibilityEvent event, int eventType) {
-        // 1. CLICK DETECTION (List Page)
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            AccessibilityNodeInfo source = event.getSource();
-            if (source != null) {
-                // We check if the clicked node (or its immediate children) contains "FocusGuard"
-                // This is surgical and only blocks the specific item click.
-                if (isFocusGuardNode(source)) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+
+        try {
+            // --- CONTEXT VERIFICATION ---
+            // Ensure we are actually in a Device Admin related screen
+            boolean isAdminWindow = !root.findAccessibilityNodeInfosByText("Device administrators").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("Device admin apps").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("ডিভাইস অ্যাডমিনিস্ট্রেটর").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("Activate device admin").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("অ্যাক্টিভেট").isEmpty();
+            
+            if (!isAdminWindow) return;
+
+            // --- CLICK DETECTION ---
+            if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                AccessibilityNodeInfo source = event.getSource();
+                if (source != null) {
+                    if (isFocusGuardNode(source)) {
+                        source.recycle();
+                        triggerKickOut();
+                        return;
+                    }
                     source.recycle();
-                    triggerKickOut();
-                    return;
                 }
-                source.recycle();
             }
-        }
 
-        // 2. SCREEN DETECTION (Confirmation Detail Page)
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            try {
-                // IGNORE LIST PAGE and APP INFO PAGE
-                String[] ignoreTitles = {
-                    "Device administrators", "Device admin apps", "ডিভাইস অ্যাডমিনিস্ট্রেটর", "ডিভাইস অ্যাডমিন অ্যাপ",
-                    "App info", "অ্যাপ তথ্য", "Permissions", "Storage"
-                };
-                for (String title : ignoreTitles) {
-                    if (!root.findAccessibilityNodeInfosByText(title).isEmpty()) return;
-                }
-
-                // The Detail/Activation screen ALWAYS has a "Cancel" button and an "Action" button.
+            // --- SCREEN DETECTION ---
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                // Ignore the list itself (only block detail/confirmation screens)
                 boolean hasCancel = !root.findAccessibilityNodeInfosByText("Cancel").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("বাতিল").isEmpty();
                 
                 if (hasCancel) {
-                    // It's a detail/confirmation screen. Now check if it's OUR app.
                     List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
                     if (hits != null && !hits.isEmpty()) {
                         for (AccessibilityNodeInfo n : hits) n.recycle();
                         
-                        // Final check: Is there an Activate/Deactivate button?
-                        boolean hasAction = !root.findAccessibilityNodeInfosByText("Activate").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("Deactivate").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("অ্যাক্টিভেট").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("ডিঅ্যাক্টিভেট").isEmpty();
+                        boolean isAdminDetail = !root.findAccessibilityNodeInfosByText("Deactivate").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Activate").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("ডিঅ্যাক্টিভেট").isEmpty();
                         
-                        if (hasAction) {
-                            triggerKickOut();
-                        }
+                        if (isAdminDetail) triggerKickOut();
                     }
                 }
-            } finally {
-                root.recycle();
             }
+        } finally {
+            root.recycle();
         }
     }
 
