@@ -138,21 +138,23 @@ public class BlockerService extends AccessibilityService {
      */
     private void handleAccessibilityProtection(AccessibilityEvent event, int eventType) {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-
-            // PRIMARY CHECK: getSource() — the actually tapped node (most reliable)
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
-                boolean found = nodeContainsFocusGuardText(source);
-                source.recycle();
-                if (found) {
+                // Search the entire subtree of the clicked node for "FocusGuard"
+                // This is very reliable as it catches any child TextViews
+                List<AccessibilityNodeInfo> matches = source.findAccessibilityNodeInfosByText("FocusGuard");
+                if (matches != null && !matches.isEmpty()) {
+                    for (AccessibilityNodeInfo n : matches) n.recycle();
+                    source.recycle();
                     triggerKickOut();
                     return;
                 }
+                source.recycle();
             }
 
-            // FALLBACK: check event text (works on AOSP)
+            // Fallback for some devices where source might be null but event text has it
             String tapped = getEventText(event).toLowerCase();
-            if (tapped.contains("focusguard") || tapped.contains("blocker")) {
+            if (tapped.contains("focusguard")) {
                 triggerKickOut();
                 return;
             }
@@ -163,50 +165,13 @@ public class BlockerService extends AccessibilityService {
             if (cls == null) return;
             String clsName = cls.toString().toLowerCase();
 
-            // Detect the accessibility DETAIL/TOGGLE screen (not the list page)
-            // These class names appear when a specific service's page opens
-            boolean isDetailScreen =
-                clsName.contains("toggleaccessibilityservice") ||
-                clsName.contains("accessibilityservicewarning") ||
-                clsName.contains("accessibilitydetails") ||
-                clsName.contains("accessibilityindividualsettings") ||
-                (clsName.contains("accessibility") && clsName.contains("fragment")) ||
-                (clsName.contains("accessibility") && clsName.contains("dialog"));
-
-            if (isDetailScreen) {
+            // Broad detection for accessibility detail/toggle/warning screens
+            if (clsName.contains("accessibility") || clsName.contains("toggle") || clsName.contains("confirm")) {
                 checkWindowForFocusGuard();
             }
         }
     }
 
-    /** Check if a node or its immediate children contain FocusGuard text */
-    private boolean nodeContainsFocusGuardText(AccessibilityNodeInfo node) {
-        if (node == null) return false;
-        // Check the node itself
-        CharSequence text = node.getText();
-        if (text != null && (text.toString().toLowerCase().contains("focusguard")
-                || text.toString().toLowerCase().contains("blocker"))) {
-            return true;
-        }
-        CharSequence desc = node.getContentDescription();
-        if (desc != null && (desc.toString().toLowerCase().contains("focusguard")
-                || desc.toString().toLowerCase().contains("blocker"))) {
-            return true;
-        }
-        // Check direct children (list items often have icon + text as children)
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child == null) continue;
-            CharSequence childText = child.getText();
-            if (childText != null && (childText.toString().toLowerCase().contains("focusguard")
-                    || childText.toString().toLowerCase().contains("blocker"))) {
-                child.recycle();
-                return true;
-            }
-            child.recycle();
-        }
-        return false;
-    }
 
     /**
      * DEVICE ADMIN PROTECTION
@@ -215,25 +180,25 @@ public class BlockerService extends AccessibilityService {
      */
     private void handleAdminProtection(AccessibilityEvent event, int eventType) {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            // Fast path: user tapped — check if it's our admin item
-            String tapped = getEventText(event).toLowerCase();
-            if (tapped.contains("focusguard") || tapped.contains("blocker")) {
-                triggerKickOut();
-                return;
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                List<AccessibilityNodeInfo> matches = source.findAccessibilityNodeInfosByText("FocusGuard");
+                if (matches != null && !matches.isEmpty()) {
+                    for (AccessibilityNodeInfo n : matches) n.recycle();
+                    source.recycle();
+                    triggerKickOut();
+                    return;
+                }
+                source.recycle();
             }
         }
 
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            // A new screen opened — check if it's the device admin confirmation screen
             CharSequence cls = event.getClassName();
             if (cls == null) return;
             String clsName = cls.toString().toLowerCase();
 
-            boolean isAdminScreen =
-                clsName.contains("deviceadminadd") ||
-                clsName.contains("deviceadmin") && !clsName.contains("accessibility");
-
-            if (isAdminScreen) {
+            if (clsName.contains("admin") || clsName.contains("confirm") || clsName.contains("deviceadmin")) {
                 checkWindowForFocusGuard();
             }
         }
@@ -243,7 +208,10 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
-            if (nodeTreeContainsFocusGuard(root)) {
+            // Search for "FocusGuard" in the newly opened window
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText("FocusGuard");
+            if (nodes != null && !nodes.isEmpty()) {
+                for (AccessibilityNodeInfo n : nodes) n.recycle();
                 triggerKickOut();
             }
         } finally {
