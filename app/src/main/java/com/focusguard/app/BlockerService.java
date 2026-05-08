@@ -145,27 +145,28 @@ public class BlockerService extends AccessibilityService {
             return;
         }
 
-        // 2. ROOT WINDOW BYPASS: Check the actual focused window
+        int type = event.getEventType();
+
+        // ── A: CLICK-BASED PROTECTION (Aggressive) ───────────────────────────
+        // Trigger if we tap FocusGuard inside Settings or Android System
+        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || type == AccessibilityEvent.TYPE_VIEW_SELECTED) {
+            if ((packageName.contains("settings") || packageName.contains("android")) 
+                 && eventTextContainsFocusGuardKeyword(event)) {
+                kickOut();
+                return;
+            }
+        }
+
+        // 2. ROOT WINDOW BYPASS: For Page-based checks
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root != null) {
             try {
                 CharSequence rootPkg = root.getPackageName();
                 if (rootPkg != null && rootPkg.toString().equalsIgnoreCase(getPackageName())) {
-                    return; // We are in our app, definitely don't block.
+                    return; 
                 }
             } finally {
                 root.recycle();
-            }
-        }
-
-        int type = event.getEventType();
-
-        // ── A: CLICK-BASED PROTECTION (Surgical) ─────────────────────────────
-        // We ONLY block clicks if we are in a Settings-related app.
-        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || type == AccessibilityEvent.TYPE_VIEW_SELECTED) {
-            if (packageName.contains("settings") && eventTextContainsFocusGuardKeyword(event)) {
-                kickOut();
-                return;
             }
         }
 
