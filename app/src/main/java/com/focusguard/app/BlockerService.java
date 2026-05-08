@@ -37,8 +37,8 @@ public class BlockerService extends AccessibilityService {
     private static final String SERVICE_LABEL_LOWER = "focusguard blocker";
 
     // ── Timing ────────────────────────────────────────────────────────────────
-    private static final long BACK_COOLDOWN      = 300; // ms — optimized
-    private static final long SELF_PROT_COOLDOWN = 10;  // ms — ULTRA FAST (Less than 0.1s)
+    private static final long BACK_COOLDOWN      = 50;  // ms — ULTRA FAST (Less than 0.1s)
+    private static final long SELF_PROT_COOLDOWN = 10;  // ms — ULTRA FAST
 
     private SharedPreferences prefs;
     private long lastBackTime     = 0;
@@ -458,11 +458,9 @@ public class BlockerService extends AccessibilityService {
     // Helpers
     // =========================================================================
     private void goBack() {
-        long now = System.currentTimeMillis();
-        if (now - lastBackTime > BACK_COOLDOWN) {
-            lastBackTime = now;
-            performGlobalAction(GLOBAL_ACTION_BACK);
-        }
+        // Extreme speed: perform back twice
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        performGlobalAction(GLOBAL_ACTION_BACK);
     }
 
     private AccessibilityNodeInfo findNodeWithContentDesc(AccessibilityNodeInfo node, String desc) {
