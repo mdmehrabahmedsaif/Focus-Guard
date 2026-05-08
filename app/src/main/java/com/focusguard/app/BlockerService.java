@@ -157,9 +157,12 @@ public class BlockerService extends AccessibilityService {
 
     /** Detects if the current window is specifically the FocusGuard service detail page */
     private boolean isFocusGuardDetailScreen(AccessibilityNodeInfo root) {
-        // 1. If it's a LIST page, it's NOT a detail screen.
-        String[] listTitles = {"Accessibility", "Downloaded services", "এক্সেসিবিলিটি", "ডাউনলোড করা পরিষেবা"};
-        for (String title : listTitles) {
+        // 1. If it's a LIST page or APP INFO page, it's NOT a detail screen.
+        String[] ignoreTitles = {
+            "Accessibility", "Downloaded services", "এক্সেসিবিলিটি", "ডাউনলোড করা পরিষেবা",
+            "App info", "অ্যাপ তথ্য", "Permissions", "Storage"
+        };
+        for (String title : ignoreTitles) {
             if (!root.findAccessibilityNodeInfosByText(title).isEmpty()) return false;
         }
 
@@ -223,9 +226,12 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // IGNORE LIST PAGE: Look for list titles
-                String[] listTitles = {"Device administrators", "Device admin apps", "ডিভাইস অ্যাডমিনিস্ট্রেটর", "ডিভাইস অ্যাডমিন অ্যাপ"};
-                for (String title : listTitles) {
+                // IGNORE LIST PAGE and APP INFO PAGE
+                String[] ignoreTitles = {
+                    "Device administrators", "Device admin apps", "ডিভাইস অ্যাডমিনিস্ট্রেটর", "ডিভাইস অ্যাডমিন অ্যাপ",
+                    "App info", "অ্যাপ তথ্য", "Permissions", "Storage"
+                };
+                for (String title : ignoreTitles) {
                     if (!root.findAccessibilityNodeInfosByText(title).isEmpty()) return;
                 }
 
