@@ -126,11 +126,13 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
-                // Search the clicked item's subtree for "FocusGuard"
-                // This catches the click even if the text is in a child view
-                List<AccessibilityNodeInfo> hits = source.findAccessibilityNodeInfosByText("FocusGuard");
-                if (hits != null && !hits.isEmpty()) {
-                    for (AccessibilityNodeInfo n : hits) n.recycle();
+                // To be surgical, we check if the click text is Accessibility-related
+                // OR if it's the FocusGuard item in the Accessibility list.
+                String text = getEventText(event).toLowerCase();
+                boolean isAccListClick = text.contains("focusguard") && 
+                                        (text.contains("off") || text.contains("on") || text.contains("বন্ধ") || text.contains("চালু"));
+                
+                if (isAccListClick || isFocusGuardNode(source)) {
                     source.recycle();
                     triggerKickOut();
                     return;
@@ -156,16 +158,9 @@ public class BlockerService extends AccessibilityService {
     /** Detects if the current window is specifically the FocusGuard service detail page */
     private boolean isFocusGuardDetailScreen(AccessibilityNodeInfo root) {
         // 1. If it's a LIST page, it's NOT a detail screen.
-        // We check for common list titles in English and Bengali.
-        String[] listTitles = {"Accessibility", "Downloaded services", "এক্সেসিবিলিটি", "ডাউনলোড করা পরিষেবা", "FocusGuard Blocker"};
+        String[] listTitles = {"Accessibility", "Downloaded services", "এক্সেসিবিলিটি", "ডাউনলোড করা পরিষেবা"};
         for (String title : listTitles) {
-            if (!root.findAccessibilityNodeInfosByText(title).isEmpty()) {
-                // If we find "Accessibility" or the list header, we check if there are multiple items
-                // Detail pages usually don't have the list header text.
-                // However, to be safe, if we are in the list, we return false.
-                // Special case: "FocusGuard Blocker" text in the list.
-                return false; 
-            }
+            if (!root.findAccessibilityNodeInfosByText(title).isEmpty()) return false;
         }
 
         // 2. Window must contain our service name
@@ -173,13 +168,15 @@ public class BlockerService extends AccessibilityService {
         if (hits == null || hits.isEmpty()) return false;
         for (AccessibilityNodeInfo n : hits) n.recycle();
 
-        // 3. Distinguish DETAIL from LIST
-        // Detail page has "Use" or "ব্যবহার" (Bengali) or a Switch/Toggle widget
-        boolean hasDetailKeywords = !root.findAccessibilityNodeInfosByText("Use").isEmpty() ||
-                                   !root.findAccessibilityNodeInfosByText("On/Off").isEmpty() ||
-                                   !root.findAccessibilityNodeInfosByText("ব্যবহার").isEmpty();
+        // 3. STRICT ACCESSIBILITY CONTEXT
+        // Only block if we see Accessibility-specific detail keywords.
+        // This prevents Accessibility Lock from accidentally blocking Admin screens.
+        boolean isAccessibilityContext = !root.findAccessibilityNodeInfosByText("Use service").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("ব্যবহার").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("Shortcut").isEmpty();
         
-        return hasDetailKeywords || findSwitchInNode(root);
+        return isAccessibilityContext || findSwitchInNode(root);
     }
 
     private boolean findSwitchInNode(AccessibilityNodeInfo node) {
