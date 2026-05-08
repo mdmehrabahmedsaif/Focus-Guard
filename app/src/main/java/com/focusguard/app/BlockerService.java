@@ -109,29 +109,34 @@ public class BlockerService extends AccessibilityService {
     // =========================================================================
 
     private void handleSettingsEvent(AccessibilityEvent event, int eventType) {
-        if (eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
-            eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            return;
+        // CRITICAL FIX: Only check event TEXT on TYPE_VIEW_CLICKED
+        // WHY: The accessibility settings LIST page always shows "FocusGuard" as an item.
+        // If we check text on TYPE_WINDOW_CONTENT_CHANGED, we kick the user out the
+        // moment the list page loads — blocking the whole accessibility settings page.
+        // We ONLY want to react when the user actually TAPS on the FocusGuard item.
+
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            // User tapped something — check if it's our item
+            String eventText = getEventText(event).toLowerCase();
+            if (eventText.contains("focusguard") || eventText.contains("blocker")) {
+                triggerKickOut();
+                return;
+            }
         }
 
-        // Fast path: check event text first (zero cost if not our screen)
-        String eventText = getEventText(event).toLowerCase();
-        if (eventText.contains("focusguard") || eventText.contains("blocker")) {
-            triggerKickOut();
-            return;
-        }
-
-        // Class-name based detection for specific screens
-        CharSequence cls = event.getClassName();
-        if (cls != null) {
-            String clsName = cls.toString().toLowerCase();
-            if (clsName.contains("deviceadmin") || clsName.contains("admin") ||
-                clsName.contains("accessibilitysettings") ||
-                clsName.contains("toggleaccessibilityservice") ||
-                clsName.contains("accessibilitydetails") ||
-                clsName.contains("accessibilityservicewarnin")) {
-                checkWindowForFocusGuard();
+        // For window transitions (new screen opened), use class-name detection
+        // This catches the detail/toggle/confirmation screen after the tap
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            CharSequence cls = event.getClassName();
+            if (cls != null) {
+                String clsName = cls.toString().toLowerCase();
+                if (clsName.contains("deviceadmin") ||
+                    clsName.contains("toggleaccessibilityservice") ||
+                    clsName.contains("accessibilitydetails") ||
+                    clsName.contains("accessibilityservicewarning")) {
+                    // A specific FocusGuard management screen opened — scan and kick
+                    checkWindowForFocusGuard();
+                }
             }
         }
     }
