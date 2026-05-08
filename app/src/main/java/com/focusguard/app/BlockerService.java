@@ -148,29 +148,13 @@ public class BlockerService extends AccessibilityService {
             return;
         }
 
-        // 3. LAUNCHER BYPASS: Allow opening the app from Home Screen.
-        // We only bypass if we are sure it's a launcher (to avoid bypassing settings).
-        boolean isLauncher = packageName.contains("launcher") || 
-                             packageName.contains("trebuchet") || 
-                             packageName.equals("android"); // 'android' is often used for home clicks
-
-        // 4. SETTINGS CHECK: Settings and other system apps MUST be protected.
-        // If it's NOT a launcher, we proceed with the protection checks.
-        if (isLauncher) {
-            // Special Case: If it's the 'android' package, we only bypass if it doesn't look like a deactivation page
-            if (packageName.equals("android") && (rootIsAdminDeactivationPage() || rootContainsDescription())) {
-                // Proceed to kick out even if pkg is 'android'
-            } else {
-                return; 
-            }
-        }
-
         int type = event.getEventType();
 
-        // ── A: CLICK-BASED PROTECTION (The primary trigger) ──────────────────
-        // This fires the MOMENT you tap on "FocusGuard" in any list.
+        // ── A: CLICK-BASED PROTECTION (Surgical) ─────────────────────────────
+        // We ONLY block clicks if we are in a Settings-related app.
+        // This PREVENTS blocking the app launch from Home Screen/Launcher!
         if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || type == AccessibilityEvent.TYPE_VIEW_SELECTED) {
-            if (eventTextContainsFocusGuardKeyword(event)) {
+            if (packageName.contains("settings") && eventTextContainsFocusGuardKeyword(event)) {
                 kickOut();
                 return;
             }
