@@ -44,7 +44,6 @@ public class MainActivity extends AppCompatActivity {
 
         initViews();
         setupListeners();
-        checkActiveTimer();
     }
 
     private void initViews() {
@@ -66,8 +65,10 @@ public class MainActivity extends AppCompatActivity {
         etFocusMinutes = findViewById(R.id.etFocusMinutes);
         etPasscode = findViewById(R.id.etPasscode);
 
-        // Load Password
-        etPasscode.setText(prefs.getString("emergency_password", ""));
+        // Load Password safely
+        if (prefs != null) {
+            etPasscode.setText(prefs.getString("emergency_password", ""));
+        }
     }
 
     private void setupListeners() {
@@ -80,10 +81,11 @@ public class MainActivity extends AppCompatActivity {
             BlockerService service = BlockerService.getInstance();
             if (service != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 service.disableService();
-                updateStatusUI();
             } else {
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
             }
+            // Force delay update to avoid UI sync issues
+            v.postDelayed(this::updateStatusUI, 500);
         }));
 
         btnEnableAdmin.setOnClickListener(v -> {
@@ -94,8 +96,15 @@ public class MainActivity extends AppCompatActivity {
         });
 
         btnDisableAdmin.setOnClickListener(v -> promptPasswordIfActive(() -> {
-            dpm.removeActiveAdmin(adminComponent);
-            updateStatusUI();
+            try {
+                // INSTANT REMOVAL
+                dpm.removeActiveAdmin(adminComponent);
+                // FORCE UI UPDATE IMMEDIATELY
+                updateStatusUI();
+                Toast.makeText(this, "🛡️ Admin Protection Disabled", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                updateStatusUI();
+            }
         }));
 
         btnSavePasscode.setOnClickListener(v -> {
@@ -126,18 +135,17 @@ public class MainActivity extends AppCompatActivity {
             
             new android.app.AlertDialog.Builder(this)
                 .setTitle("🚨 Security Bypass")
-                .setMessage("A focus session is active. Enter your PASSWORD to unlock settings.")
+                .setMessage("Enter PASSWORD to unlock.")
                 .setView(input)
                 .setPositiveButton("Unlock", (dialog, which) -> {
                     String pass = input.getText().toString();
                     if (pass.equals(prefs.getString("emergency_password", ""))) {
-                        // End timer immediately
                         prefs.edit().putLong("timer_end_time", 0).apply();
                         if (countDownTimer != null) countDownTimer.cancel();
                         tvTimerRemaining.setVisibility(View.GONE);
                         lockInternalSettings(false);
                         onSuccess.run();
-                        Toast.makeText(this, "🔓 Settings Unlocked", Toast.LENGTH_SHORT).show();
+                        updateStatusUI();
                     } else {
                         Toast.makeText(this, "❌ Incorrect Password!", Toast.LENGTH_SHORT).show();
                     }
@@ -158,8 +166,6 @@ public class MainActivity extends AppCompatActivity {
         prefs.edit().putLong("timer_end_time", endTime).apply();
         
         prefs.edit().putBoolean("is_service_active", true).putBoolean("block_accessibility", true).putBoolean("block_device_admin", true).apply();
-        swBlockAccessibility.setChecked(true);
-        swBlockDeviceAdmin.setChecked(true);
         
         lockInternalSettings(true);
         startTimer(duration);
@@ -177,21 +183,24 @@ public class MainActivity extends AppCompatActivity {
         etFocusHours.setEnabled(enabled);
         etFocusMinutes.setEnabled(enabled);
         btnStartFocus.setEnabled(enabled);
-        // Password field stays enabled so user can see what they set, 
-        // but they can't start a NEW session if one is active.
     }
 
     private void startTimer(long duration) {
-        if (countDownTimer != null) countDownTimer.cancel();
+        if (countDownTimer != null) {
+            countDownTimer.cancel();
+            countDownTimer = null;
+        }
         tvTimerRemaining.setVisibility(View.VISIBLE);
         countDownTimer = new CountDownTimer(duration, 1000) {
             public void onTick(long ms) {
+                if (isFinishing()) return;
                 long h = ms / 3600000;
                 long m = (ms % 3600000) / 60000;
                 long s = (ms % 60000) / 1000;
                 tvTimerRemaining.setText(String.format("Time Remaining: %02d:%02d:%02d", h, m, s));
             }
             public void onFinish() {
+                if (isFinishing()) return;
                 tvTimerRemaining.setText("Session Finished! 🎉");
                 tvTimerRemaining.setTextColor(Color.parseColor("#4CAF50"));
                 lockInternalSettings(false);
@@ -211,6 +220,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateStatusUI() {
+        if (isFinishing()) return;
+        
         boolean isServiceOn = isAccessibilityServiceEnabled();
         boolean isAdminOn = dpm.isAdminActive(adminComponent);
 
@@ -245,7 +256,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        checkActiveTimer();
         updateStatusUI();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (countDownTimer != null) {
+            countDownTimer.cancel();
+        }
+        super.onDestroy();
     }
 
     @Override
