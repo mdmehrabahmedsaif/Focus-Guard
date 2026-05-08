@@ -131,10 +131,26 @@ public class BlockerService extends AccessibilityService {
      * ACCESSIBILITY PROTECTION
      * Triggers ONLY when user taps FocusGuard in Accessibility Settings.
      * Does NOT interfere with Device Admin screens.
+     *
+     * FIX: Many OEMs do NOT put item text in event.getText() for list clicks.
+     * Instead, the text is in event.getSource() — the actual clicked node.
+     * We check BOTH for maximum OEM compatibility.
      */
     private void handleAccessibilityProtection(AccessibilityEvent event, int eventType) {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            // Fast path: user tapped — check if it's our service item
+
+            // PRIMARY CHECK: getSource() — the actually tapped node (most reliable)
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                boolean found = nodeContainsFocusGuardText(source);
+                source.recycle();
+                if (found) {
+                    triggerKickOut();
+                    return;
+                }
+            }
+
+            // FALLBACK: check event text (works on AOSP)
             String tapped = getEventText(event).toLowerCase();
             if (tapped.contains("focusguard") || tapped.contains("blocker")) {
                 triggerKickOut();
@@ -143,21 +159,53 @@ public class BlockerService extends AccessibilityService {
         }
 
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            // A new screen opened — check if it's the accessibility detail/toggle screen
             CharSequence cls = event.getClassName();
             if (cls == null) return;
             String clsName = cls.toString().toLowerCase();
 
-            boolean isAccessibilityScreen =
+            // Detect the accessibility DETAIL/TOGGLE screen (not the list page)
+            // These class names appear when a specific service's page opens
+            boolean isDetailScreen =
                 clsName.contains("toggleaccessibilityservice") ||
-                clsName.contains("accessibilitydetails") ||
                 clsName.contains("accessibilityservicewarning") ||
-                clsName.contains("accessibilityindividualsettings");
+                clsName.contains("accessibilitydetails") ||
+                clsName.contains("accessibilityindividualsettings") ||
+                (clsName.contains("accessibility") && clsName.contains("fragment")) ||
+                (clsName.contains("accessibility") && clsName.contains("dialog"));
 
-            if (isAccessibilityScreen) {
+            if (isDetailScreen) {
                 checkWindowForFocusGuard();
             }
         }
+    }
+
+    /** Check if a node or its immediate children contain FocusGuard text */
+    private boolean nodeContainsFocusGuardText(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        // Check the node itself
+        CharSequence text = node.getText();
+        if (text != null && (text.toString().toLowerCase().contains("focusguard")
+                || text.toString().toLowerCase().contains("blocker"))) {
+            return true;
+        }
+        CharSequence desc = node.getContentDescription();
+        if (desc != null && (desc.toString().toLowerCase().contains("focusguard")
+                || desc.toString().toLowerCase().contains("blocker"))) {
+            return true;
+        }
+        // Check direct children (list items often have icon + text as children)
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) continue;
+            CharSequence childText = child.getText();
+            if (childText != null && (childText.toString().toLowerCase().contains("focusguard")
+                    || childText.toString().toLowerCase().contains("blocker"))) {
+                child.recycle();
+                return true;
+            }
+            child.recycle();
+        }
+        return false;
     }
 
     /**
