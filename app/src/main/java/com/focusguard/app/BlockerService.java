@@ -139,20 +139,34 @@ public class BlockerService extends AccessibilityService {
         boolean blockAdm = prefs.getBoolean("block_device_admin", false);
         if (!blockAcc && !blockAdm) return;
 
-        // 1. FASTEST BYPASS: If event is from our app, stop immediately.
+        // 1. FASTEST BYPASS: Never block if the event or active window is our app!
+        String myPkg = getPackageName().toLowerCase();
+        
         CharSequence eventPkg = event.getPackageName();
-        String packageName = (eventPkg != null) ? eventPkg.toString().toLowerCase() : "";
-        if (packageName.equals(getPackageName().toLowerCase())) {
+        if (eventPkg != null && eventPkg.toString().toLowerCase().equals(myPkg)) {
             return;
         }
 
-        int type = event.getEventType();
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null) {
+            try {
+                CharSequence rootPkg = root.getPackageName();
+                if (rootPkg != null && rootPkg.toString().toLowerCase().equals(myPkg)) {
+                    return; 
+                }
+            } finally {
+                root.recycle();
+            }
+        }
 
-        // ── A: CLICK-BASED PROTECTION (Aggressive) ───────────────────────────
-        // Trigger if we tap FocusGuard inside Settings or Android System
+        int type = event.getEventType();
+        String pkgName = (eventPkg != null) ? eventPkg.toString().toLowerCase() : "";
+
+        // ── A: CLICK-BASED PROTECTION (Strict) ───────────────────────────────
+        // Only block if we are EXPLICITLY in a Settings app.
+        // This stops blocking when opening from Recents or Home Screen.
         if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || type == AccessibilityEvent.TYPE_VIEW_SELECTED) {
-            if ((packageName.contains("settings") || packageName.contains("android")) 
-                 && eventTextContainsFocusGuardKeyword(event)) {
+            if (pkgName.contains("settings") && eventTextContainsFocusGuardKeyword(event)) {
                 kickOut();
                 return;
             }
