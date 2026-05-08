@@ -12,6 +12,7 @@ import android.text.InputType;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -25,10 +26,11 @@ public class MainActivity extends AppCompatActivity {
     private DevicePolicyManager dpm;
     private ComponentName adminComponent;
     
-    private TextView tvServiceStatus, tvAdminStatus, tvTimerRemaining;
-    private Button btnEnableService, btnDisableService, btnEnableAdmin, btnDisableAdmin, btnStartFocus, btnSavePass;
-    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAcc, swBlockAdmin;
+    private TextView tvAdminStatus, tvTimerRemaining;
+    private Button btnEnableAdmin, btnDisableAdmin, btnStartFocus;
+    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAcc;
     private EditText etHours, etMinutes, etPassword;
+    private ProgressBar focusProgress;
     
     private CountDownTimer countDownTimer;
     private static final int REQ_ADMIN = 101;
@@ -47,89 +49,59 @@ public class MainActivity extends AppCompatActivity {
             setupListeners();
             syncUIWithState();
         } catch (Exception e) {
-            Toast.makeText(this, "App initialization error. Please check permissions.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "System Init Error", Toast.LENGTH_LONG).show();
             e.printStackTrace();
         }
     }
 
     private void initViews() {
-        tvServiceStatus = findViewById(R.id.tvServiceStatus);
-        tvAdminStatus   = findViewById(R.id.tvAdminStatus);
+        tvAdminStatus    = findViewById(R.id.tvAdminStatus);
         tvTimerRemaining = findViewById(R.id.tvTimerRemaining);
-        btnEnableService = findViewById(R.id.btnEnableService);
-        btnDisableService = findViewById(R.id.btnDisableService);
         btnEnableAdmin   = findViewById(R.id.btnEnableAdmin);
         btnDisableAdmin  = findViewById(R.id.btnDisableAdmin);
         btnStartFocus    = findViewById(R.id.btnStartFocus);
-        btnSavePass      = findViewById(R.id.btnSavePasscode);
-        swWhatsApp       = findViewById(R.id.switchWhatsApp);
-        swYouTube        = findViewById(R.id.switchYouTube);
-        swInstagram      = findViewById(R.id.switchInstagram);
-        swBlockAcc       = findViewById(R.id.switchBlockAccessibility);
-        swBlockAdmin     = findViewById(R.id.switchBlockDeviceAdmin);
         etHours          = findViewById(R.id.etFocusHours);
         etMinutes        = findViewById(R.id.etFocusMinutes);
         etPassword       = findViewById(R.id.etPasscode);
+        focusProgress    = findViewById(R.id.focusProgress);
+        swBlockAcc       = findViewById(R.id.switchBlockAccessibility);
+
+        // Setup Futuristic App Rows
+        setupAppRow(R.id.rowWhatsApp, "💬", "WhatsApp Updates", "Block channels & feeds");
+        setupAppRow(R.id.rowYouTube, "▶️", "YouTube Shorts", "Stop scroll addiction");
+        setupAppRow(R.id.rowInstagram, "📸", "Instagram Reels", "Master your time");
+
+        swWhatsApp  = findViewById(R.id.rowWhatsApp).findViewById(R.id.itemSwitch);
+        swYouTube   = findViewById(R.id.rowYouTube).findViewById(R.id.itemSwitch);
+        swInstagram = findViewById(R.id.rowInstagram).findViewById(R.id.itemSwitch);
 
         if (pref != null && etPassword != null) {
             etPassword.setText(pref.getEmergencyPassword());
         }
     }
 
+    private void setupAppRow(int rowId, String icon, String title, String desc) {
+        View row = findViewById(rowId);
+        ((TextView)row.findViewById(R.id.itemIcon)).setText(icon);
+        ((TextView)row.findViewById(R.id.itemTitle)).setText(title);
+        ((TextView)row.findViewById(R.id.itemDesc)).setText(desc);
+    }
+
     private void setupListeners() {
-        if (btnEnableService == null) return;
-
-        btnEnableService.setOnClickListener(v -> {
-            pref.setServiceActive(true);
-            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-        });
-
-        btnDisableService.setOnClickListener(v -> promptPassword(() -> {
-            BlockerService service = BlockerService.getInstance();
-            if (service != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                service.disableService();
-                
-                tvServiceStatus.setText("❌ Blocker is Inactive");
-                tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_red));
-                btnEnableService.setVisibility(View.VISIBLE);
-                btnDisableService.setVisibility(View.GONE);
-            } else {
-                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-            }
-            v.postDelayed(this::syncUIWithState, 800);
-        }));
-
         btnEnableAdmin.setOnClickListener(v -> {
             Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
-            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Admin required for anti-uninstall protection.");
+            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "System integrity protection.");
             startActivityForResult(intent, REQ_ADMIN);
         });
 
         btnDisableAdmin.setOnClickListener(v -> promptPassword(() -> {
             try {
                 dpm.removeActiveAdmin(adminComponent);
-                tvAdminStatus.setText("Device Admin: OFF");
-                tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_red));
-                btnEnableAdmin.setVisibility(View.VISIBLE);
-                btnDisableAdmin.setVisibility(View.GONE);
-                pref.setDeviceAdminProtected(false);
-                v.postDelayed(this::syncUIWithState, 800);
-                Toast.makeText(this, "🛡️ Protection Disabled", Toast.LENGTH_SHORT).show();
-            } catch (Exception e) {
                 syncUIWithState();
-            }
+                Toast.makeText(this, "System Unlocked", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) { syncUIWithState(); }
         }));
-
-        btnSavePass.setOnClickListener(v -> {
-            String pass = etPassword.getText().toString();
-            if (pass.length() >= 4) {
-                pref.setEmergencyPassword(pass);
-                Toast.makeText(this, "Password Secured 🔐", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Enter at least 4 characters", Toast.LENGTH_SHORT).show();
-            }
-        });
 
         btnStartFocus.setOnClickListener(v -> startFocusSession());
 
@@ -137,7 +109,6 @@ public class MainActivity extends AppCompatActivity {
         swYouTube.setOnCheckedChangeListener((b, checked) -> pref.setYouTubeBlocked(checked));
         swInstagram.setOnCheckedChangeListener((b, checked) -> pref.setInstagramBlocked(checked));
         swBlockAcc.setOnCheckedChangeListener((b, checked) -> pref.setAccessibilityProtected(checked));
-        swBlockAdmin.setOnCheckedChangeListener((b, checked) -> pref.setDeviceAdminProtected(checked));
     }
 
     private void startFocusSession() {
@@ -152,7 +123,7 @@ public class MainActivity extends AppCompatActivity {
         pref.setDeviceAdminProtected(true);
         
         syncUIWithState();
-        Toast.makeText(this, "🚀 Focus Mode Locked!", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "🚀 Deep Focus Initiated", Toast.LENGTH_SHORT).show();
     }
 
     private void promptPassword(Runnable onVerify) {
@@ -160,52 +131,39 @@ public class MainActivity extends AppCompatActivity {
             final EditText input = new EditText(this);
             input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
             new android.app.AlertDialog.Builder(this)
-                .setTitle("🚨 Security Bypass")
-                .setMessage("Timer is active. Enter password to unlock.")
+                .setTitle("🛡️ CORE BYPASS")
+                .setMessage("Authentication required to break focus session.")
                 .setView(input)
-                .setPositiveButton("Unlock", (dialog, which) -> {
+                .setPositiveButton("VERIFY", (dialog, which) -> {
                     if (input.getText().toString().equals(pref.getEmergencyPassword())) {
                         pref.setTimerEndTime(0);
                         if (countDownTimer != null) countDownTimer.cancel();
                         onVerify.run();
                         syncUIWithState();
                     } else {
-                        Toast.makeText(this, "❌ Incorrect Password", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "❌ AUTH FAILED", Toast.LENGTH_SHORT).show();
                     }
                 })
-                .setNegativeButton("Cancel", null).show();
+                .setNegativeButton("ABORT", null).show();
         } else {
             onVerify.run();
         }
     }
 
     private void syncUIWithState() {
-        if (isFinishing() || tvServiceStatus == null) return;
+        if (isFinishing() || tvAdminStatus == null) return;
 
-        boolean serviceOn = isAccessibilityEnabled();
         boolean adminOn   = dpm.isAdminActive(adminComponent);
         boolean timerOn   = pref.isTimerActive();
 
-        if (serviceOn) {
-            tvServiceStatus.setText("✅ Blocker is Active");
-            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.success_green));
-            btnEnableService.setVisibility(View.GONE);
-            btnDisableService.setVisibility(View.VISIBLE);
-        } else {
-            tvServiceStatus.setText("❌ Blocker is Inactive");
-            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_red));
-            btnEnableService.setVisibility(View.VISIBLE);
-            btnDisableService.setVisibility(View.GONE);
-        }
-
         if (adminOn) {
-            tvAdminStatus.setText("Device Admin: ON");
-            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.success_green));
+            tvAdminStatus.setText("CORE ADMIN: ACTIVE");
+            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
             btnEnableAdmin.setVisibility(View.GONE);
             btnDisableAdmin.setVisibility(View.VISIBLE);
         } else {
-            tvAdminStatus.setText("Device Admin: OFF");
-            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_red));
+            tvAdminStatus.setText("CORE ADMIN: OFFLINE");
+            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_rose));
             btnEnableAdmin.setVisibility(View.VISIBLE);
             btnDisableAdmin.setVisibility(View.GONE);
         }
@@ -214,17 +172,16 @@ public class MainActivity extends AppCompatActivity {
         swYouTube.setChecked(pref.isYouTubeBlocked());
         swInstagram.setChecked(pref.isInstagramBlocked());
         swBlockAcc.setChecked(pref.isAccessibilityProtected());
-        swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
 
         setInternalUIEnabled(!timerOn);
 
         if (timerOn) {
             long remaining = pref.getTimerEndTime() - System.currentTimeMillis();
+            long total = pref.getTimerEndTime() - (pref.getTimerEndTime() - remaining); // Simplified for now
             startCountdown(remaining);
-            tvTimerRemaining.setTextColor(Color.parseColor("#38BDF8"));
         } else {
-            tvTimerRemaining.setText("READY TO FOCUS");
-            tvTimerRemaining.setTextColor(Color.parseColor("#475569"));
+            tvTimerRemaining.setText("00:00:00");
+            focusProgress.setProgress(0);
         }
     }
 
@@ -234,29 +191,31 @@ public class MainActivity extends AppCompatActivity {
         swYouTube.setEnabled(enabled);
         swInstagram.setEnabled(enabled);
         swBlockAcc.setEnabled(enabled);
-        swBlockAdmin.setEnabled(enabled);
         etHours.setEnabled(enabled);
         etMinutes.setEnabled(enabled);
         btnStartFocus.setEnabled(enabled);
     }
 
     private void startCountdown(long ms) {
-        if (countDownTimer != null) {
-            countDownTimer.cancel();
-            countDownTimer = null;
-        }
-        tvTimerRemaining.setVisibility(View.VISIBLE);
+        if (countDownTimer != null) countDownTimer.cancel();
+        
+        final long totalTime = ms;
         countDownTimer = new CountDownTimer(ms, 1000) {
             public void onTick(long msRemaining) {
                 if (isFinishing()) return;
                 long h = msRemaining / 3600000;
                 long m = (msRemaining % 3600000) / 60000;
                 long s = (msRemaining % 60000) / 1000;
-                tvTimerRemaining.setText(String.format("Locked for: %02d:%02d:%02d", h, m, s));
+                tvTimerRemaining.setText(String.format("%02d:%02d:%02d", h, m, s));
+                
+                // Smart Progress logic
+                int progress = (int) (100 - (msRemaining * 100 / totalTime));
+                focusProgress.setProgress(progress);
             }
             public void onFinish() {
                 if (isFinishing()) return;
-                tvTimerRemaining.setText("Focus Finished! 🎉");
+                tvTimerRemaining.setText("SESSION END");
+                focusProgress.setProgress(100);
                 syncUIWithState();
             }
         }.start();
@@ -268,12 +227,6 @@ public class MainActivity extends AppCompatActivity {
         return (s.isEmpty()) ? 0 : Integer.parseInt(s);
     }
 
-    private boolean isAccessibilityEnabled() {
-        String s = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        return s != null && s.contains(getPackageName() + "/" + BlockerService.class.getName());
-    }
-
     @Override protected void onResume() { super.onResume(); syncUIWithState(); }
     @Override protected void onDestroy() { if (countDownTimer != null) { countDownTimer.cancel(); } super.onDestroy(); }
-    @Override protected void onActivityResult(int i, int j, Intent d) { super.onActivityResult(i, j, d); syncUIWithState(); }
 }

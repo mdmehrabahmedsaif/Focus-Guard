@@ -1,24 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Primary Theme Colors -->
-    <color name="primary">#0F172A</color>
-    <color name="primary_dark">#020617</color>
-    <color name="accent_blue">#3B82F6</color>
-    <color name="accent_indigo">#6366F1</color>
+    <!-- Futuristic Dark Palette -->
+    <color name="bg_midnight">#020617</color>
+    <color name="card_dark">#0F172A</color>
+    <color name="card_glass">#1E293B</color>
     
-    <!-- Status Colors -->
-    <color name="success_green">#10B981</color>
-    <color name="warning_orange">#F59E0B</color>
-    <color name="danger_red">#EF4444</color>
+    <!-- Neon Accents -->
+    <color name="neon_blue">#38BDF8</color>
+    <color name="neon_purple">#818CF8</color>
+    <color name="neon_cyan">#22D3EE</color>
     
-    <!-- Background & Card Colors -->
-    <color name="bg_light">#F8FAFC</color>
-    <color name="card_bg">#FFFFFF</color>
-    <color name="divider">#E2E8F0</color>
+    <!-- Status & Text -->
+    <color name="success_emerald">#10B981</color>
+    <color name="danger_rose">#F43F5E</color>
+    <color name="text_high">#F8FAFC</color>
+    <color name="text_mid">#94A3B8</color>
+    <color name="text_low">#475569</color>
     
-    <!-- Text Colors -->
-    <color name="text_main">#1E293B</color>
-    <color name="text_muted">#64748B</color>
-    <color name="white">#FFFFFF</color>
-    <color name="black">#000000</color>
+    <!-- Gradients -->
+    <color name="grad_start">#3B82F6</color>
+    <color name="grad_end">#8B5CF6</color>
 </resources>
