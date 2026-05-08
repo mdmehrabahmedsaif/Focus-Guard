@@ -82,20 +82,18 @@ public class BlockerService extends AccessibilityService {
             return;
         }
 
-        if (!prefManager.isServiceActive()) return;
-
-        // Use direct string comparison (fast path, no toLowerCase allocation)
-        if (PKG_WHATSAPP.equals(pkgName) || pkg.toString().equals(PKG_WHATSAPP)) {
+        // Always-on blocking — no timer dependency, just check user preference switches
+        if (PKG_WHATSAPP.equals(pkg.toString())) {
             if (prefManager.isWhatsAppBlocked()
                     && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
                 handleWhatsApp();
             }
-        } else if (PKG_YOUTUBE.equals(pkgName) || pkg.toString().equals(PKG_YOUTUBE)) {
+        } else if (PKG_YOUTUBE.equals(pkg.toString())) {
             if (prefManager.isYouTubeBlocked()) {
                 handleYouTube(event, eventType);
             }
-        } else if (PKG_INSTAGRAM.equals(pkgName) || pkg.toString().equals(PKG_INSTAGRAM)) {
+        } else if (PKG_INSTAGRAM.equals(pkg.toString())) {
             if (prefManager.isInstagramBlocked()
                     && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {

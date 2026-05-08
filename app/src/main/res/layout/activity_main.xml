@@ -52,91 +52,7 @@
             android:orientation="vertical"
             android:padding="20dp">
 
-            <!-- Futuristic Circular Timer Card -->
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="280dp"
-                android:layout_marginBottom="24dp"
-                android:background="@drawable/shape_futuristic_card"
-                android:padding="24dp">
-
-                <ProgressBar
-                    android:id="@+id/focusProgress"
-                    style="?android:attr/progressBarStyleHorizontal"
-                    android:layout_width="220dp"
-                    android:layout_height="220dp"
-                    android:layout_gravity="center"
-                    android:indeterminate="false"
-                    android:max="100"
-                    android:progress="0"
-                    android:progressDrawable="@drawable/progress_circular_neon" />
-
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvTimerRemaining"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="00:00:00"
-                        android:textColor="@color/text_high"
-                        android:textSize="36sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="REMAINING"
-                        android:textColor="@color/text_low"
-                        android:textSize="10sp"
-                        android:textStyle="bold"
-                        android:letterSpacing="0.2"/>
-                </LinearLayout>
-            </FrameLayout>
-
-            <!-- Quick Controls Row -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="24dp">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:background="@drawable/shape_futuristic_card"
-                    android:padding="16dp"
-                    android:gravity="center"
-                    android:layout_marginEnd="8dp">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="🔥 12 Days"
-                        android:textColor="@color/neon_purple"
-                        android:textStyle="bold"/>
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:background="@drawable/shape_futuristic_card"
-                    android:padding="16dp"
-                    android:gravity="center"
-                    android:layout_marginStart="8dp">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="⚡ 86% Flow"
-                        android:textColor="@color/neon_cyan"
-                        android:textStyle="bold"/>
-                </LinearLayout>
-            </LinearLayout>
+            <!-- No timer - password protection only -->
 
             <!-- Target App Switches -->
             <LinearLayout
@@ -235,82 +151,11 @@
                         android:visibility="gone"/>
                 </LinearLayout>
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="TIMER DURATION"
-                    android:textColor="@color/text_low"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.2"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="16dp"/>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center"
-                    android:layout_marginBottom="24dp">
-
-                    <EditText
-                        android:id="@+id/etFocusHours"
-                        android:layout_width="60dp"
-                        android:layout_height="wrap_content"
-                        android:hint="00"
-                        android:gravity="center"
-                        android:inputType="number"
-                        android:textColor="@color/white"
-                        android:textColorHint="@color/text_low"
-                        android:backgroundTint="@color/neon_blue"
-                        android:textSize="20sp"
-                        android:textStyle="bold"/>
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text=":"
-                        android:textColor="@color/text_high"
-                        android:textSize="20sp"
-                        android:layout_marginHorizontal="12dp"/>
-
-                    <EditText
-                        android:id="@+id/etFocusMinutes"
-                        android:layout_width="60dp"
-                        android:layout_height="wrap_content"
-                        android:hint="00"
-                        android:gravity="center"
-                        android:inputType="number"
-                        android:textColor="@color/white"
-                        android:textColorHint="@color/text_low"
-                        android:backgroundTint="@color/neon_blue"
-                        android:textSize="20sp"
-                        android:textStyle="bold"/>
-                </LinearLayout>
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchBlockDeviceAdmin"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="DEVICE ADMIN PROTECTION"
-                    android:textColor="@color/text_high"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="16dp"/>
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchBlockAccessibility"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="ACCESSIBILITY PROTECTION"
-                    android:textColor="@color/text_high"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="20dp"/>
-
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnStartFocus"
+                    android:id="@+id/btnSavePassword"
                     android:layout_width="match_parent"
-                    android:layout_height="60dp"
-                    android:text="INITIATE FOCUS SESSION"
+                    android:layout_height="56dp"
+                    android:text="SAVE PASSWORD"
                     android:backgroundTint="@color/grad_start"
                     app:cornerRadius="16dp"
                     android:textStyle="bold"
