@@ -28,7 +28,7 @@ public class MainActivity extends AppCompatActivity {
     
     private TextView tvAdminStatus, tvTimerRemaining;
     private Button btnEnableAdmin, btnDisableAdmin, btnStartFocus;
-    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAcc;
+    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAcc, swBlockAdmin;
     private EditText etHours, etMinutes, etPassword;
     private ProgressBar focusProgress;
     
@@ -65,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
         etPassword       = findViewById(R.id.etPasscode);
         focusProgress    = findViewById(R.id.focusProgress);
         swBlockAcc       = findViewById(R.id.switchBlockAccessibility);
+        swBlockAdmin     = findViewById(R.id.switchBlockDeviceAdmin);
 
         // Setup Futuristic App Rows
         setupAppRow(R.id.rowWhatsApp, "💬", "WhatsApp Updates", "Block channels & feeds");
@@ -105,10 +106,14 @@ public class MainActivity extends AppCompatActivity {
 
         btnStartFocus.setOnClickListener(v -> startFocusSession());
 
+        // App Blocking Listeners
         swWhatsApp.setOnCheckedChangeListener((b, checked) -> pref.setWhatsAppBlocked(checked));
         swYouTube.setOnCheckedChangeListener((b, checked) -> pref.setYouTubeBlocked(checked));
         swInstagram.setOnCheckedChangeListener((b, checked) -> pref.setInstagramBlocked(checked));
+        
+        // Protection Listeners (The fixed part)
         swBlockAcc.setOnCheckedChangeListener((b, checked) -> pref.setAccessibilityProtected(checked));
+        swBlockAdmin.setOnCheckedChangeListener((b, checked) -> pref.setDeviceAdminProtected(checked));
     }
 
     private void startFocusSession() {
@@ -172,12 +177,12 @@ public class MainActivity extends AppCompatActivity {
         swYouTube.setChecked(pref.isYouTubeBlocked());
         swInstagram.setChecked(pref.isInstagramBlocked());
         swBlockAcc.setChecked(pref.isAccessibilityProtected());
+        swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
 
         setInternalUIEnabled(!timerOn);
 
         if (timerOn) {
             long remaining = pref.getTimerEndTime() - System.currentTimeMillis();
-            long total = pref.getTimerEndTime() - (pref.getTimerEndTime() - remaining); // Simplified for now
             startCountdown(remaining);
         } else {
             tvTimerRemaining.setText("00:00:00");
@@ -191,6 +196,7 @@ public class MainActivity extends AppCompatActivity {
         swYouTube.setEnabled(enabled);
         swInstagram.setEnabled(enabled);
         swBlockAcc.setEnabled(enabled);
+        swBlockAdmin.setEnabled(enabled);
         etHours.setEnabled(enabled);
         etMinutes.setEnabled(enabled);
         btnStartFocus.setEnabled(enabled);
@@ -208,7 +214,6 @@ public class MainActivity extends AppCompatActivity {
                 long s = (msRemaining % 60000) / 1000;
                 tvTimerRemaining.setText(String.format("%02d:%02d:%02d", h, m, s));
                 
-                // Smart Progress logic
                 int progress = (int) (100 - (msRemaining * 100 / totalTime));
                 focusProgress.setProgress(progress);
             }

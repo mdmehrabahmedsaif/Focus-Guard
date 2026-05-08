@@ -40,46 +40,54 @@ public class BlockerService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (prefManager == null) prefManager = new PreferenceManager(this);
-        if (!prefManager.isServiceActive()) return;
-
+        
         CharSequence eventPkg = event.getPackageName();
         if (eventPkg == null) return;
         String pkgName = eventPkg.toString();
 
-        // 1. SELF PROTECTION (Settings & Uninstall)
-        if (pkgName.contains("settings")) {
+        // --- CORE SELF PROTECTION (Always active if toggled) ---
+        if (pkgName.contains("settings") || pkgName.contains("packageinstaller")) {
             handleSelfProtection(event);
-            return;
         }
 
-        // 2. APP BLOCKING
-        switch (pkgName) {
-            case PKG_WHATSAPP:
-                if (prefManager.isWhatsAppBlocked()) handleWhatsApp();
-                break;
-            case PKG_YOUTUBE:
-                if (prefManager.isYouTubeBlocked()) handleYouTubeShorts(event);
-                break;
-            case PKG_INSTAGRAM:
-                if (prefManager.isInstagramBlocked()) handleInstagramReels();
-                break;
+        // --- APP CONTENT BLOCKING ---
+        if (prefManager.isServiceActive()) {
+            switch (pkgName) {
+                case PKG_WHATSAPP:
+                    if (prefManager.isWhatsAppBlocked()) handleWhatsApp();
+                    break;
+                case PKG_YOUTUBE:
+                    if (prefManager.isYouTubeBlocked()) handleYouTubeShorts(event);
+                    break;
+                case PKG_INSTAGRAM:
+                    if (prefManager.isInstagramBlocked()) handleInstagramReels();
+                    break;
+            }
         }
     }
 
     private void handleSelfProtection(AccessibilityEvent event) {
-        int type = event.getEventType();
         String text = getEventText(event).toLowerCase();
 
-        // A. Accessibility Page Protection
-        if (prefManager.isAccessibilityProtected() && text.contains("focusguard blocker")) {
-            kickOut();
-            return;
+        // 1. Accessibility Settings Protection
+        if (prefManager.isAccessibilityProtected()) {
+            if (text.contains("focusguard") || text.contains("blocker")) {
+                kickOut();
+            }
         }
 
-        // B. Uninstall Protection (Surgical)
-        if (prefManager.isDeviceAdminProtected() && (text.contains("uninstall") || text.contains("আনইনস্টল"))) {
-            if (rootContainsAppTitle("FocusGuard")) {
-                kickOut();
+        // 2. Device Admin / Uninstall Protection
+        if (prefManager.isDeviceAdminProtected()) {
+            if (text.contains("uninstall") || text.contains("deactivate") || 
+                text.contains("admin") || text.contains("আনইনস্টল") || text.contains("বন্ধ")) {
+                
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    if (rootContainsText(root, "FocusGuard") || rootContainsText(root, "Blocker")) {
+                        kickOut();
+                    }
+                    root.recycle();
+                }
             }
         }
     }
@@ -88,25 +96,38 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
-            if (isWhatsAppUpdatesTabActive(root)) goBack();
+            // Improved detection for "Updates" / "Channels" tab
+            if (isWhatsAppUpdatesTabActive(root)) {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+            }
         } finally {
             root.recycle();
         }
     }
 
     private boolean isWhatsAppUpdatesTabActive(AccessibilityNodeInfo root) {
+        // Deep search for selected "Updates" tab
         String[] keywords = {"Updates", "Status", "Channels", "আপডেট", "স্ট্যাটাস", "চ্যানেল"};
         for (String kw : keywords) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
-            if (nodes != null) {
+            if (nodes != null && !nodes.isEmpty()) {
                 for (AccessibilityNodeInfo node : nodes) {
-                    if (node != null && (node.isSelected() || node.isChecked())) {
-                        node.recycle();
-                        return true;
+                    if (node != null) {
+                        if (node.isSelected() || node.isFocused() || isParentSelected(node)) {
+                            return true;
+                        }
                     }
-                    if (node != null) node.recycle();
                 }
             }
+        }
+        return false;
+    }
+
+    private boolean isParentSelected(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo parent = node.getParent();
+        while (parent != null) {
+            if (parent.isSelected()) return true;
+            parent = parent.getParent();
         }
         return false;
     }
@@ -115,15 +136,15 @@ public class BlockerService extends AccessibilityService {
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             CharSequence cls = event.getClassName();
             if (cls != null && cls.toString().toLowerCase().contains("shorts")) {
-                goBack();
+                performGlobalAction(GLOBAL_ACTION_BACK);
                 return;
             }
         }
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
-            if (findNodeWithContentDesc(root, "Shorts") != null || findNodeWithContentDesc(root, "শর্টস") != null) {
-                goBack();
+            if (findNodeByContent(root, "Shorts") || findNodeByContent(root, "শর্টস")) {
+                performGlobalAction(GLOBAL_ACTION_BACK);
             }
         } finally {
             root.recycle();
@@ -134,25 +155,32 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
-            AccessibilityNodeInfo r = findNodeWithContentDesc(root, "Reels");
-            if (r == null) r = findNodeWithContentDesc(root, "রিলস");
-            if (r != null) {
-                r.recycle();
-                goBack();
+            if (findNodeByContent(root, "Reels") || findNodeByContent(root, "রিলস")) {
+                performGlobalAction(GLOBAL_ACTION_BACK);
             }
         } finally {
             root.recycle();
         }
     }
 
-    private void kickOut() {
-        performGlobalAction(GLOBAL_ACTION_HOME);
-        performGlobalAction(GLOBAL_ACTION_BACK);
+    private boolean findNodeByContent(AccessibilityNodeInfo node, String text) {
+        if (node == null) return false;
+        CharSequence cd = node.getContentDescription();
+        if (cd != null && cd.toString().equalsIgnoreCase(text)) return true;
+        
+        for (int i = 0; i < node.getChildCount(); i++) {
+            if (findNodeByContent(node.getChild(i), text)) return true;
+        }
+        return false;
     }
 
-    private void goBack() {
-        performGlobalAction(GLOBAL_ACTION_BACK);
-        performGlobalAction(GLOBAL_ACTION_BACK);
+    private boolean rootContainsText(AccessibilityNodeInfo root, String text) {
+        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(text);
+        return hits != null && !hits.isEmpty();
+    }
+
+    private void kickOut() {
+        performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
     private String getEventText(AccessibilityEvent event) {
@@ -162,32 +190,6 @@ public class BlockerService extends AccessibilityService {
         }
         if (event.getContentDescription() != null) sb.append(event.getContentDescription());
         return sb.toString();
-    }
-
-    private boolean rootContainsAppTitle(String title) {
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return false;
-        try {
-            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(title);
-            if (hits != null && !hits.isEmpty()) {
-                for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
-                return true;
-            }
-            return false;
-        } finally {
-            root.recycle();
-        }
-    }
-
-    private AccessibilityNodeInfo findNodeWithContentDesc(AccessibilityNodeInfo node, String desc) {
-        if (node == null) return null;
-        CharSequence cd = node.getContentDescription();
-        if (cd != null && cd.toString().equalsIgnoreCase(desc)) return node;
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo found = findNodeWithContentDesc(node.getChild(i), desc);
-            if (found != null) return found;
-        }
-        return null;
     }
 
     @Override public void onInterrupt() {}
