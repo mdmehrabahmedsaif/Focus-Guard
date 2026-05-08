@@ -81,8 +81,8 @@ public class MainActivity extends AppCompatActivity {
                 service.disableService();
                 
                 // Immediate UI feedback
-                tvServiceStatus.setText("❌ Accessibility: OFF");
-                tvServiceStatus.setTextColor(Color.parseColor("#F44336"));
+                tvServiceStatus.setText("❌ Blocker is Inactive");
+                tvServiceStatus.setTextColor(getResources().getColor(R.color.danger_red));
                 btnEnableService.setVisibility(View.VISIBLE);
                 btnDisableService.setVisibility(View.GONE);
             } else {
@@ -103,17 +103,17 @@ public class MainActivity extends AppCompatActivity {
                 // 1. PERFORM REMOVAL
                 dpm.removeActiveAdmin(adminComponent);
                 
-                // 2. OPTIMISTIC UI: Force update status immediately without waiting
-                tvAdminStatus.setText("❌ Admin Protection: OFF");
-                tvAdminStatus.setTextColor(Color.parseColor("#F44336"));
+                // 2. OPTIMISTIC UI: Match new design
+                tvAdminStatus.setText("Device Admin: OFF");
+                tvAdminStatus.setTextColor(getResources().getColor(R.color.danger_red));
                 btnEnableAdmin.setVisibility(View.VISIBLE);
                 btnDisableAdmin.setVisibility(View.GONE);
                 pref.setDeviceAdminProtected(false);
                 
-                // 3. Delayed sync to confirm with system
+                // 3. Delayed sync
                 v.postDelayed(this::syncUIWithState, 800);
                 
-                Toast.makeText(this, "🛡️ Admin Protection Disabled", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "🛡️ Protection Disabled", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
                 syncUIWithState();
             }
@@ -186,33 +186,49 @@ public class MainActivity extends AppCompatActivity {
         boolean adminOn   = dpm.isAdminActive(adminComponent);
         boolean timerOn   = pref.isTimerActive();
 
-        // Status Texts
-        tvServiceStatus.setText(serviceOn ? "✅ Accessibility: ON" : "❌ Accessibility: OFF");
-        tvServiceStatus.setTextColor(serviceOn ? Color.parseColor("#4CAF50") : Color.parseColor("#F44336"));
-        btnEnableService.setVisibility(serviceOn ? View.GONE : View.VISIBLE);
-        btnDisableService.setVisibility(serviceOn ? View.VISIBLE : View.GONE);
+        // 1. Accessibility Service Status
+        if (serviceOn) {
+            tvServiceStatus.setText("✅ Blocker is Active");
+            tvServiceStatus.setTextColor(getResources().getColor(R.color.success_green));
+            btnEnableService.setVisibility(View.GONE);
+            btnDisableService.setVisibility(View.VISIBLE);
+        } else {
+            tvServiceStatus.setText("❌ Blocker is Inactive");
+            tvServiceStatus.setTextColor(getResources().getColor(R.color.danger_red));
+            btnEnableService.setVisibility(View.VISIBLE);
+            btnDisableService.setVisibility(View.GONE);
+        }
 
-        tvAdminStatus.setText(adminOn ? "✅ Admin Protection: ON" : "❌ Admin Protection: OFF");
-        tvAdminStatus.setTextColor(adminOn ? Color.parseColor("#4CAF50") : Color.parseColor("#F44336"));
-        btnEnableAdmin.setVisibility(adminOn ? View.GONE : View.VISIBLE);
-        btnDisableAdmin.setVisibility(adminOn ? View.VISIBLE : View.GONE);
+        // 2. Admin Protection Status
+        if (adminOn) {
+            tvAdminStatus.setText("Device Admin: ON");
+            tvAdminStatus.setTextColor(getResources().getColor(R.color.success_green));
+            btnEnableAdmin.setVisibility(View.GONE);
+            btnDisableAdmin.setVisibility(View.VISIBLE);
+        } else {
+            tvAdminStatus.setText("Device Admin: OFF");
+            tvAdminStatus.setTextColor(getResources().getColor(R.color.danger_red));
+            btnEnableAdmin.setVisibility(View.VISIBLE);
+            btnDisableAdmin.setVisibility(View.GONE);
+        }
 
-        // Switches
+        // 3. Switches State
         swWhatsApp.setChecked(pref.isWhatsAppBlocked());
         swYouTube.setChecked(pref.isYouTubeBlocked());
         swInstagram.setChecked(pref.isInstagramBlocked());
         swBlockAcc.setChecked(pref.isAccessibilityProtected());
-        swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
 
-        // Lock internal settings if timer active
+        // 4. Lock internal settings if timer active
         setInternalUIEnabled(!timerOn);
 
-        // Timer Display
+        // 5. Timer Display
         if (timerOn) {
             long remaining = pref.getTimerEndTime() - System.currentTimeMillis();
             startCountdown(remaining);
+            tvTimerRemaining.setTextColor(Color.parseColor("#38BDF8")); // Bright focus blue
         } else {
-            tvTimerRemaining.setVisibility(View.GONE);
+            tvTimerRemaining.setText("READY TO FOCUS");
+            tvTimerRemaining.setTextColor(Color.parseColor("#475569")); // Muted slate
         }
     }
 

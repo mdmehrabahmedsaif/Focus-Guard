@@ -1,16 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#1976D2</color>
-    <color name="primary_dark">#1565C0</color>
-    <color name="accent">#4CAF50</color>
-    <color name="status_on">#4CAF50</color>
-    <color name="status_off">#F44336</color>
+    <!-- Primary Theme Colors -->
+    <color name="primary">#0F172A</color>
+    <color name="primary_dark">#020617</color>
+    <color name="accent_blue">#3B82F6</color>
+    <color name="accent_indigo">#6366F1</color>
+    
+    <!-- Status Colors -->
+    <color name="success_green">#10B981</color>
+    <color name="warning_orange">#F59E0B</color>
+    <color name="danger_red">#EF4444</color>
+    
+    <!-- Background & Card Colors -->
+    <color name="bg_light">#F8FAFC</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="divider">#E2E8F0</color>
+    
+    <!-- Text Colors -->
+    <color name="text_main">#1E293B</color>
+    <color name="text_muted">#64748B</color>
     <color name="white">#FFFFFF</color>
-    <color name="black">#212121</color>
-    <color name="gray">#757575</color>
-    <color name="bg_light">#F5F5F5</color>
-    <color name="card_background">#FFFFFF</color>
-    <color name="text_primary">#212121</color>
-    <color name="text_secondary">#757575</color>
-    <color name="accent_blue">#1976D2</color>
+    <color name="black">#000000</color>
 </resources>

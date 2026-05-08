@@ -1,487 +1,499 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.coordinatorlayout.widget.CoordinatorLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5">
+    android:background="@color/bg_light">
 
-    <LinearLayout
+    <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:background="@android:color/transparent"
+        app:elevation="0dp">
 
-        <!-- Header -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#1976D2"
             android:orientation="vertical"
             android:padding="24dp"
-            android:layout_marginBottom="16dp">
+            android:background="@color/primary">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="🛡️ FocusGuard"
-                android:textColor="#FFFFFF"
-                android:textSize="28sp"
+                android:textColor="@color/white"
+                android:textSize="26sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Stay Focused"
-                android:textColor="#BBDEFB"
+                android:text="Master your time, secure your focus."
+                android:textColor="#94A3B8"
                 android:textSize="14sp"
                 android:layout_marginTop="4dp"/>
         </LinearLayout>
+    </com.google.android.material.appbar.AppBarLayout>
 
-        <!-- Status Card -->
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
         <LinearLayout
-            android:id="@+id/statusCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#FFFFFF"
             android:orientation="vertical"
-            android:padding="16dp"
-            android:layout_marginBottom="12dp"
-            android:elevation="2dp">
+            android:padding="16dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Service Status"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="#212121"/>
-
-            <TextView
-                android:id="@+id/tvServiceStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="❌ Accessibility Service is OFF"
-                android:textSize="14sp"
-                android:textColor="#F44336"
-                android:layout_marginTop="8dp"/>
-
-            <Button
-                android:id="@+id/btnEnableService"
+            <!-- Global Status Card -->
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Enable Accessibility Service"
-                android:backgroundTint="#1976D2"
-                android:textColor="#FFFFFF"
-                android:layout_marginTop="12dp"/>
-
-            <Button
-                android:id="@+id/btnDisableService"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Turn OFF Blocker Service"
-                android:backgroundTint="#B0BEC5"
-                android:textColor="#212121"
-                android:layout_marginTop="8dp"
-                android:visibility="gone"/>
-        </LinearLayout>
-
-        <!-- WhatsApp Block Card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#FFFFFF"
-            android:orientation="horizontal"
-            android:padding="16dp"
-            android:layout_marginBottom="8dp"
-            android:gravity="center_vertical"
-            android:elevation="2dp">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="💬 WhatsApp Channels"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:textColor="#212121"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Blocks the Updates tab"
-                    android:textSize="12sp"
-                    android:textColor="#757575"/>
-            </LinearLayout>
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchWhatsApp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:checked="true"/>
-        </LinearLayout>
-
-        <!-- YouTube Shorts Block Card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#FFFFFF"
-            android:orientation="horizontal"
-            android:padding="16dp"
-            android:layout_marginBottom="8dp"
-            android:gravity="center_vertical"
-            android:elevation="2dp">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="▶️ YouTube Shorts"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:textColor="#212121"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Blocks Shorts videos"
-                    android:textSize="12sp"
-                    android:textColor="#757575"/>
-            </LinearLayout>
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchYouTube"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:checked="true"/>
-        </LinearLayout>
-
-        <!-- Instagram Reels Block Card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#FFFFFF"
-            android:orientation="horizontal"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp"
-            android:gravity="center_vertical"
-            android:elevation="2dp">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="📸 Instagram Reels"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:textColor="#212121"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Blocks Reels videos"
-                    android:textSize="12sp"
-                    android:textColor="#757575"/>
-            </LinearLayout>
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchInstagram"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:checked="true"/>
-        </LinearLayout>
-
-        <!-- Uninstall Prevention Card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#FFFFFF"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:layout_marginBottom="12dp"
-            android:elevation="2dp">
-
-            <!-- Section Title -->
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="🔒 Uninstall Prevention"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="#212121"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Protect FocusGuard from being disabled or removed"
-                android:textSize="12sp"
-                android:textColor="#757575"
-                android:layout_marginTop="2dp"
-                android:layout_marginBottom="12dp"/>
-
-            <!-- Device Admin Row -->
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Device Admin"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:textColor="#212121"/>
-
-            <TextView
-                android:id="@+id/tvAdminStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="❌ Protection is OFF"
-                android:textSize="13sp"
-                android:textColor="#F44336"
-                android:layout_marginTop="4dp"/>
-
-            <Button
-                android:id="@+id/btnEnableAdmin"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Enable Device Admin"
-                android:backgroundTint="#388E3C"
-                android:textColor="#FFFFFF"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="8dp"/>
-
-            <Button
-                android:id="@+id/btnDisableAdmin"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Turn OFF Device Admin"
-                android:backgroundTint="#B0BEC5"
-                android:textColor="#212121"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="2dp"
+                app:strokeWidth="0dp"
                 android:layout_marginBottom="16dp"
-                android:visibility="gone"/>
-
-            <!-- Divider -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#E0E0E0"
-                android:layout_marginBottom="16dp"/>
-
-            <!-- Block Accessibility Row -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="16dp">
+                app:cardBackgroundColor="@color/card_bg">
 
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:orientation="vertical"
+                    android:padding="20dp">
 
                     <TextView
+                        android:id="@+id/tvServiceStatus"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="🚫 Block Accessibility Settings"
-                        android:textSize="14sp"
+                        android:text="Service Inactive"
+                        android:textSize="18sp"
                         android:textStyle="bold"
-                        android:textColor="#212121"/>
+                        android:textColor="@color/danger_red"/>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Instantly ejects from FocusGuard Blocker page"
-                        android:textSize="12sp"
-                        android:textColor="#757575"
-                        android:layout_marginTop="2dp"/>
+                        android:text="Enable Accessibility to start blocking"
+                        android:textColor="@color/text_muted"
+                        android:textSize="13sp"
+                        android:layout_marginTop="4dp"/>
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnEnableService"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:layout_marginTop="16dp"
+                        android:text="Activate Blocker"
+                        app:cornerRadius="12dp"
+                        android:backgroundTint="@color/accent_blue"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:textAllCaps="false"
+                        android:textSize="16sp"
+                        android:textStyle="bold"/>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDisableService"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:layout_marginTop="12dp"
+                        android:text="Deactivate Service"
+                        app:cornerRadius="12dp"
+                        app:strokeColor="@color/divider"
+                        android:textColor="@color/text_main"
+                        android:textAllCaps="false"
+                        android:visibility="gone"/>
                 </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchBlockAccessibility"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:checked="false"/>
+            <!-- App Targets Section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Target Applications"
+                android:textColor="@color/text_main"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:layout_marginStart="8dp"
+                android:layout_marginBottom="12dp"/>
 
-            </LinearLayout>
-
-            <!-- Block Device Admin Row -->
-            <LinearLayout
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                app:cardCornerRadius="20dp"
+                app:cardElevation="2dp"
+                android:layout_marginBottom="24dp"
+                app:cardBackgroundColor="@color/card_bg">
 
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:orientation="vertical"
+                    android:padding="8dp">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <!-- WhatsApp Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="🛡️ Block Device Admin Protection"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        android:textColor="#212121"/>
+                        android:orientation="horizontal"
+                        android:padding="12dp"
+                        android:gravity="center_vertical">
+                        
+                        <TextView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:text="💬"
+                            android:gravity="center"
+                            android:textSize="20sp"
+                            android:background="@drawable/shape_circle_light"/>
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="16dp"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="WhatsApp Updates"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_main"/>
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Block Channels &amp; Updates"
+                                android:textSize="12sp"
+                                android:textColor="@color/text_muted"/>
+                        </LinearLayout>
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/switchWhatsApp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" android:layout_marginStart="68dp"/>
+
+                    <!-- YouTube Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Prevents deactivating admin in settings"
-                        android:textSize="12sp"
-                        android:textColor="#757575"
-                        android:layout_marginTop="2dp"/>
+                        android:orientation="horizontal"
+                        android:padding="12dp"
+                        android:gravity="center_vertical">
+                        
+                        <TextView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:text="▶️"
+                            android:gravity="center"
+                            android:textSize="20sp"
+                            android:background="@drawable/shape_circle_light"/>
 
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="16dp"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="YouTube Shorts"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_main"/>
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Eliminate short-form distractions"
+                                android:textSize="12sp"
+                                android:textColor="@color/text_muted"/>
+                        </LinearLayout>
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/switchYouTube"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" android:layout_marginStart="68dp"/>
+
+                    <!-- Instagram Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:padding="12dp"
+                        android:gravity="center_vertical">
+                        
+                        <TextView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:text="📸"
+                            android:gravity="center"
+                            android:textSize="20sp"
+                            android:background="@drawable/shape_circle_light"/>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="16dp"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Instagram Reels"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_main"/>
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Stay away from Reels"
+                                android:textSize="12sp"
+                                android:textColor="@color/text_muted"/>
+                        </LinearLayout>
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/switchInstagram"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
                 </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchBlockDeviceAdmin"
-                    android:layout_width="wrap_content"
+            <!-- Focus Timer Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="2dp"
+                android:layout_marginBottom="24dp"
+                app:cardBackgroundColor="@color/primary">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:checked="false"/>
+                    android:orientation="vertical"
+                    android:padding="20dp">
 
-            </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⏳ Deep Focus Timer"
+                        android:textColor="@color/white"
+                        android:textSize="18sp"
+                        android:textStyle="bold"/>
+
+                    <TextView
+                        android:id="@+id/tvTimerRemaining"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="READY TO FOCUS"
+                        android:textAlignment="center"
+                        android:textColor="#38BDF8"
+                        android:textSize="24sp"
+                        android:textStyle="bold"
+                        android:layout_marginTop="20dp"
+                        android:layout_marginBottom="20dp"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center"
+                        android:layout_marginBottom="16dp">
+
+                        <EditText
+                            android:id="@+id/etFocusHours"
+                            android:layout_width="80dp"
+                            android:layout_height="wrap_content"
+                            android:hint="00"
+                            android:gravity="center"
+                            android:inputType="number"
+                            android:textColor="@color/white"
+                            android:textColorHint="#475569"
+                            android:backgroundTint="#3B82F6"/>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=":"
+                            android:textColor="@color/white"
+                            android:textSize="24sp"
+                            android:layout_marginHorizontal="8dp"/>
+
+                        <EditText
+                            android:id="@+id/etFocusMinutes"
+                            android:layout_width="80dp"
+                            android:layout_height="wrap_content"
+                            android:hint="30"
+                            android:gravity="center"
+                            android:inputType="number"
+                            android:textColor="@color/white"
+                            android:textColorHint="#475569"
+                            android:backgroundTint="#3B82F6"/>
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnStartFocus"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:text="Start Focus Mode"
+                        app:cornerRadius="12dp"
+                        android:backgroundTint="@color/white"
+                        android:textColor="@color/primary"
+                        android:textStyle="bold"
+                        android:textAllCaps="false"/>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Advanced Security Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="2dp"
+                android:layout_marginBottom="32dp"
+                app:cardBackgroundColor="@color/card_bg">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🔒 Tamper Protection"
+                        android:textColor="@color/text_main"
+                        android:textSize="18sp"
+                        android:textStyle="bold"/>
+
+                    <!-- Admin Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="20dp"
+                        android:gravity="center_vertical">
+                        
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:id="@+id/tvAdminStatus"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Device Admin: OFF"
+                                android:textStyle="bold"
+                                android:textColor="@color/danger_red"/>
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Anti-Uninstall Layer"
+                                android:textSize="12sp"
+                                android:textColor="@color/text_muted"/>
+                        </LinearLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnEnableAdmin"
+                            style="@style/Widget.MaterialComponents.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="ENABLE"
+                            android:textColor="@color/accent_blue"
+                            android:textStyle="bold"/>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnDisableAdmin"
+                            style="@style/Widget.MaterialComponents.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="OFF"
+                            android:textColor="@color/danger_red"
+                            android:visibility="gone"/>
+                    </LinearLayout>
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" android:layout_marginVertical="12dp"/>
+
+                    <!-- Acc Protection Switch -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Settings Lockdown"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_main"/>
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Prevents unauthorized deactivation"
+                                android:textSize="12sp"
+                                android:textColor="@color/text_muted"/>
+                        </LinearLayout>
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/switchBlockAccessibility"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"/>
+                    </LinearLayout>
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" android:layout_marginVertical="12dp"/>
+
+                    <!-- Password Field -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Emergency Master Password"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_muted"
+                        android:layout_marginBottom="8dp"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        
+                        <EditText
+                            android:id="@+id/etPasscode"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:hint="••••••••"
+                            android:inputType="textPassword"
+                            android:background="@android:color/transparent"
+                            android:paddingVertical="12dp"
+                            android:textColor="@color/text_main"/>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnSavePasscode"
+                            style="@style/Widget.MaterialComponents.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="SECURE"
+                            android:textColor="@color/success_green"
+                            android:textStyle="bold"/>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
-
-        <!-- Focus Timer Card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@color/card_background"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:layout_marginBottom="12dp"
-            android:elevation="2dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⏳ Focus Timer"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_primary"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Set a time to stay locked"
-                android:textSize="12sp"
-                android:textColor="@color/text_secondary"
-                android:layout_marginTop="2dp"
-                android:layout_marginBottom="12dp"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center">
-
-                <EditText
-                    android:id="@+id/etFocusHours"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:hint="Hours"
-                    android:inputType="number"
-                    android:textColor="@color/text_primary"
-                    android:backgroundTint="@color/accent_blue"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text=" : "
-                    android:textSize="20sp"
-                    android:textColor="@color/text_primary"/>
-
-                <EditText
-                    android:id="@+id/etFocusMinutes"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:hint="Min"
-                    android:inputType="number"
-                    android:textColor="@color/text_primary"
-                    android:backgroundTint="@color/accent_blue"/>
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/btnStartFocus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="Start Focus Session"
-                android:backgroundTint="@color/accent_blue"
-                android:textColor="#FFFFFF" />
-
-            <TextView
-                android:id="@+id/tvTimerRemaining"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="No active session"
-                android:textAlignment="center"
-                android:textColor="@color/status_off"
-                android:visibility="gone"/>
-        </LinearLayout>
-
-        <!-- Security Passcode Card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@color/card_background"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:layout_marginBottom="32dp"
-            android:elevation="2dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="🔐 Security Passcode"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_primary"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Emergency exit passcode"
-                android:textSize="12sp"
-                android:textColor="@color/text_secondary"
-                android:layout_marginTop="2dp"
-                android:layout_marginBottom="12dp"/>
-
-            <EditText
-                android:id="@+id/etPasscode"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Set Emergency Password"
-                android:inputType="textPassword"
-                android:textColor="@color/text_primary"
-                android:backgroundTint="@color/status_on"/>
-
-            <Button
-                android:id="@+id/btnSavePasscode"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="Save Passcode"
-                android:backgroundTint="@color/status_on"
-                android:textColor="#FFFFFF"/>
-        </LinearLayout>
-    </LinearLayout>
-</ScrollView>
+    </androidx.core.widget.NestedScrollView>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
