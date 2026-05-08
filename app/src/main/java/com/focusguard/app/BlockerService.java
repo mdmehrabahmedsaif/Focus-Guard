@@ -142,33 +142,26 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
-                // Check if the clicked item is ours
-                if (isNodeFocusGuard(source)) {
+                // Search the clicked item's subtree for "FocusGuard"
+                // This catches the click even if the text is in a child view
+                List<AccessibilityNodeInfo> hits = source.findAccessibilityNodeInfosByText("FocusGuard");
+                if (hits != null && !hits.isEmpty()) {
+                    for (AccessibilityNodeInfo n : hits) n.recycle();
                     source.recycle();
                     triggerKickOut();
                     return;
                 }
                 source.recycle();
             }
-
-            // Fallback: check event text for app name
-            String text = getEventText(event).toLowerCase();
-            if (text.contains("focusguard") || text.contains("blocker")) {
-                triggerKickOut();
-                return;
-            }
         }
 
-        // --- SCREEN DETECTION (Window change or content update) ---
-        // We check on every content change to be super aggressive, 
-        // but we MUST distinguish between the LIST page and the DETAIL page.
+        // --- SCREEN DETECTION (Instant content scanning) ---
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
             eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // If the screen contains "FocusGuard" AND looks like a detail screen, kick out
                 if (isFocusGuardDetailScreen(root)) {
                     triggerKickOut();
                 }
@@ -180,25 +173,18 @@ public class BlockerService extends AccessibilityService {
 
     /** Detects if the current window is specifically the FocusGuard service detail page */
     private boolean isFocusGuardDetailScreen(AccessibilityNodeInfo root) {
-        // 1. Must contain FocusGuard or FocusGuard Blocker
-        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(SERVICE_LABEL);
-        if (hits == null || hits.isEmpty()) {
-            hits = root.findAccessibilityNodeInfosByText(SERVICE_LABEL + " Blocker");
-        }
-        
+        // 1. Window must contain our service name
+        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
         if (hits == null || hits.isEmpty()) return false;
         for (AccessibilityNodeInfo n : hits) n.recycle();
 
-        // 2. Must look like a detail screen (not a list)
-        // A detail screen usually has "Use [Service Name]" or "Off" or a Switch
-        boolean hasUseText = !root.findAccessibilityNodeInfosByText("Use").isEmpty() ||
-                            !root.findAccessibilityNodeInfosByText("On/Off").isEmpty() ||
-                            !root.findAccessibilityNodeInfosByText("ব্যবহার").isEmpty(); // Bengali support
+        // 2. Distinguish DETAIL from LIST
+        // Detail page has "Use [Service]" OR "ব্যবহার" OR a Switch/Toggle
+        boolean hasDetailKeywords = !root.findAccessibilityNodeInfosByText("Use").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("On/Off").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("ব্যবহার").isEmpty();
         
-        // Check for presence of a Switch/Toggle widget which is common in detail screens
-        boolean hasSwitch = findSwitchInNode(root);
-
-        return hasUseText || hasSwitch;
+        return hasDetailKeywords || findSwitchInNode(root);
     }
 
     private boolean findSwitchInNode(AccessibilityNodeInfo node) {
@@ -211,14 +197,7 @@ public class BlockerService extends AccessibilityService {
         return false;
     }
 
-    private boolean isNodeFocusGuard(AccessibilityNodeInfo node) {
-        if (node == null) return false;
-        CharSequence txt = node.getText();
-        CharSequence desc = node.getContentDescription();
-        String s = (txt != null ? txt.toString() : "") + (desc != null ? desc.toString() : "");
-        s = s.toLowerCase();
-        return s.contains("focusguard") || s.contains("blocker");
-    }
+
 
 
     /**
@@ -230,7 +209,10 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
-                if (isNodeFocusGuard(source)) {
+                // Search the clicked item's subtree for "FocusGuard"
+                List<AccessibilityNodeInfo> hits = source.findAccessibilityNodeInfosByText("FocusGuard");
+                if (hits != null && !hits.isEmpty()) {
+                    for (AccessibilityNodeInfo n : hits) n.recycle();
                     source.recycle();
                     triggerKickOut();
                     return;
@@ -261,7 +243,7 @@ public class BlockerService extends AccessibilityService {
 
 
     private void triggerKickOut() {
-        // Instant kick-out — no delay, zero-latency
+        // Instant kick-out for sub-0.1s reaction
         performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
