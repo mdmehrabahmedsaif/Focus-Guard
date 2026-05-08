@@ -89,7 +89,14 @@ public class BlockerService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
 
-        // 🚀 EXTREME SPEED TRIGGER: Check protection before ANYTHING else
+        // 🛑 ABSOLUTE BYPASS: If this is our app, STOP IMMEDIATELY.
+        // This is the emergency fix to prevent being locked out of the app.
+        CharSequence pkg = event.getPackageName();
+        if (pkg != null && pkg.toString().equalsIgnoreCase(getPackageName())) {
+            return;
+        }
+
+        // 🚀 EXTREME SPEED TRIGGER: Check protection for other apps
         selfProtect(event);
 
         // INSTANT STOP CHECK: If user turned off from app, do nothing.
