@@ -44,8 +44,7 @@ public class BlockerService extends AccessibilityService {
         if (eventPkg == null) return;
         String pkgName = eventPkg.toString();
 
-        // --- CORE SELF PROTECTION (Always active if toggled) ---
-        // Block settings, package installer, and GMS core (sometimes used for admin)
+        // --- SELF PROTECTION (Settings / Admin / Uninstall) ---
         if (pkgName.contains("settings") || pkgName.contains("packageinstaller") || pkgName.contains("gms")) {
             handleSelfProtection(event);
         }
@@ -71,21 +70,23 @@ public class BlockerService extends AccessibilityService {
 
         // 1. Accessibility Settings Protection
         if (prefManager.isAccessibilityProtected()) {
-            if (text.contains("focusguard") || text.contains("blocker")) {
-                kickOut();
+            if (text.contains("focusguard") || text.contains("blocker") || text.contains("accessibility")) {
+                if (text.contains("service") || text.contains("permission")) {
+                    kickOut();
+                }
             }
         }
 
-        // 2. Device Admin / Uninstall Protection (Hardened)
+        // 2. Device Admin / Uninstall Protection
         if (prefManager.isDeviceAdminProtected()) {
-            // Broad detection for uninstall/deactivate/manage admin screens
+            // Monitor for sensitive keywords
             if (text.contains("uninstall") || text.contains("deactivate") || 
                 text.contains("admin") || text.contains("আনইনস্টল") || 
-                text.contains("বন্ধ") || text.contains("নিষ্ক্রিয়")) {
+                text.contains("বন্ধ") || text.contains("নিষ্ক্রিয়") || 
+                text.contains("force stop")) {
                 
                 AccessibilityNodeInfo root = getRootInActiveWindow();
                 if (root != null) {
-                    // Check if FocusGuard is mentioned anywhere in the active window
                     if (deepSearchText(root, "FocusGuard") || deepSearchText(root, "Blocker")) {
                         kickOut();
                     }
@@ -99,10 +100,10 @@ public class BlockerService extends AccessibilityService {
         if (node == null) return false;
         
         CharSequence nodeText = node.getText();
-        if (nodeText != null && nodeText.toString().contains(text)) return true;
+        if (nodeText != null && nodeText.toString().toLowerCase().contains(text.toLowerCase())) return true;
         
         CharSequence nodeDesc = node.getContentDescription();
-        if (nodeDesc != null && nodeDesc.toString().contains(text)) return true;
+        if (nodeDesc != null && nodeDesc.toString().toLowerCase().contains(text.toLowerCase())) return true;
 
         for (int i = 0; i < node.getChildCount(); i++) {
             if (deepSearchText(node.getChild(i), text)) return true;

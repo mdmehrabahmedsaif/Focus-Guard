@@ -1,5 +1,6 @@
 package com.focusguard.app;
 
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -10,6 +11,7 @@ import android.os.CountDownTimer;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
+import android.view.accessibility.AccessibilityManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ProgressBar;
@@ -20,14 +22,16 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.content.ContextCompat;
 
+import java.util.List;
+
 public class MainActivity extends AppCompatActivity {
     
     private PreferenceManager pref;
     private DevicePolicyManager dpm;
     private ComponentName adminComponent;
     
-    private TextView tvAdminStatus, tvTimerRemaining;
-    private Button btnEnableAdmin, btnDisableAdmin, btnStartFocus;
+    private TextView tvAdminStatus, tvAccessibilityStatus, tvTimerRemaining;
+    private Button btnEnableAdmin, btnDisableAdmin, btnEnableAccessibility, btnDisableAccessibility, btnStartFocus;
     private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAcc, swBlockAdmin;
     private EditText etHours, etMinutes, etPassword;
     private ProgressBar focusProgress;
@@ -56,9 +60,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void initViews() {
         tvAdminStatus    = findViewById(R.id.tvAdminStatus);
+        tvAccessibilityStatus = findViewById(R.id.tvAccessibilityStatus);
         tvTimerRemaining = findViewById(R.id.tvTimerRemaining);
         btnEnableAdmin   = findViewById(R.id.btnEnableAdmin);
         btnDisableAdmin  = findViewById(R.id.btnDisableAdmin);
+        btnEnableAccessibility = findViewById(R.id.btnEnableAccessibility);
+        btnDisableAccessibility = findViewById(R.id.btnDisableAccessibility);
         btnStartFocus    = findViewById(R.id.btnStartFocus);
         etHours          = findViewById(R.id.etFocusHours);
         etMinutes        = findViewById(R.id.etFocusMinutes);
@@ -67,7 +74,6 @@ public class MainActivity extends AppCompatActivity {
         swBlockAcc       = findViewById(R.id.switchBlockAccessibility);
         swBlockAdmin     = findViewById(R.id.switchBlockDeviceAdmin);
 
-        // Setup Futuristic App Rows
         setupAppRow(R.id.rowWhatsApp, "💬", "WhatsApp Updates", "Block channels & feeds");
         setupAppRow(R.id.rowYouTube, "▶️", "YouTube Shorts", "Stop scroll addiction");
         setupAppRow(R.id.rowInstagram, "📸", "Instagram Reels", "Master your time");
@@ -89,6 +95,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupListeners() {
+        btnEnableAccessibility.setOnClickListener(v -> {
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            startActivity(intent);
+            Toast.makeText(this, "Enable FocusGuard Service", Toast.LENGTH_LONG).show();
+        });
+
+        btnDisableAccessibility.setOnClickListener(v -> promptPassword(() -> {
+            if (BlockerService.getInstance() != null) {
+                BlockerService.getInstance().disableService();
+                syncUIWithState();
+            }
+        }));
+
         btnEnableAdmin.setOnClickListener(v -> {
             Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
@@ -106,12 +125,9 @@ public class MainActivity extends AppCompatActivity {
 
         btnStartFocus.setOnClickListener(v -> startFocusSession());
 
-        // App Blocking Listeners
         swWhatsApp.setOnCheckedChangeListener((b, checked) -> pref.setWhatsAppBlocked(checked));
         swYouTube.setOnCheckedChangeListener((b, checked) -> pref.setYouTubeBlocked(checked));
         swInstagram.setOnCheckedChangeListener((b, checked) -> pref.setInstagramBlocked(checked));
-        
-        // Protection Listeners (The fixed part)
         swBlockAcc.setOnCheckedChangeListener((b, checked) -> pref.setAccessibilityProtected(checked));
         swBlockAdmin.setOnCheckedChangeListener((b, checked) -> pref.setDeviceAdminProtected(checked));
     }
@@ -137,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
             input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
             new android.app.AlertDialog.Builder(this)
                 .setTitle("🛡️ CORE BYPASS")
-                .setMessage("Authentication required to break focus session.")
+                .setMessage("Authentication required.")
                 .setView(input)
                 .setPositiveButton("VERIFY", (dialog, which) -> {
                     if (input.getText().toString().equals(pref.getEmergencyPassword())) {
@@ -155,12 +171,36 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private boolean isAccessibilityServiceEnabled() {
+        AccessibilityManager am = (AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);
+        List<AccessibilityServiceInfo> enabledServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC);
+        for (AccessibilityServiceInfo service : enabledServices) {
+            if (service.getResolveInfo().serviceInfo.packageName.equals(getPackageName())) return true;
+        }
+        return false;
+    }
+
     private void syncUIWithState() {
         if (isFinishing() || tvAdminStatus == null) return;
 
         boolean adminOn   = dpm.isAdminActive(adminComponent);
+        boolean serviceOn = isAccessibilityServiceEnabled();
         boolean timerOn   = pref.isTimerActive();
 
+        // Sync Service UI
+        if (serviceOn) {
+            tvAccessibilityStatus.setText("CORE SERVICE: ACTIVE");
+            tvAccessibilityStatus.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
+            btnEnableAccessibility.setVisibility(View.GONE);
+            btnDisableAccessibility.setVisibility(View.VISIBLE);
+        } else {
+            tvAccessibilityStatus.setText("CORE SERVICE: OFFLINE");
+            tvAccessibilityStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_rose));
+            btnEnableAccessibility.setVisibility(View.VISIBLE);
+            btnDisableAccessibility.setVisibility(View.GONE);
+        }
+
+        // Sync Admin UI
         if (adminOn) {
             tvAdminStatus.setText("CORE ADMIN: ACTIVE");
             tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
@@ -204,7 +244,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void startCountdown(long ms) {
         if (countDownTimer != null) countDownTimer.cancel();
-        
         final long totalTime = ms;
         countDownTimer = new CountDownTimer(ms, 1000) {
             public void onTick(long msRemaining) {
@@ -213,7 +252,6 @@ public class MainActivity extends AppCompatActivity {
                 long m = (msRemaining % 3600000) / 60000;
                 long s = (msRemaining % 60000) / 1000;
                 tvTimerRemaining.setText(String.format("%02d:%02d:%02d", h, m, s));
-                
                 int progress = (int) (100 - (msRemaining * 100 / totalTime));
                 focusProgress.setProgress(progress);
             }
