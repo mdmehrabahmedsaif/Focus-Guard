@@ -122,41 +122,41 @@ public class BlockerService extends AccessibilityService {
      * We check BOTH for maximum OEM compatibility.
      */
     private void handleAccessibilityProtection(AccessibilityEvent event, int eventType) {
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
-        
-        try {
-            // --- CONTEXT VERIFICATION ---
-            // Ensure we are actually in an Accessibility-related screen
-            boolean isAccessibilityWindow = !root.findAccessibilityNodeInfosByText("Accessibility").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("এক্সেসিবিলিটি").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("Downloaded services").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("ডাউনলোড করা পরিষেবা").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty();
-            
-            if (!isAccessibilityWindow) return;
+        // --- PERFORMANCE OPTIMIZATION ---
+        // Only act on Clicks or Window Changes. Ignore content updates (scrolling, etc.)
+        if (eventType != AccessibilityEvent.TYPE_VIEW_CLICKED && 
+            eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
 
-            // --- CLICK DETECTION ---
-            if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-                AccessibilityNodeInfo source = event.getSource();
-                if (source != null) {
-                    if (isFocusGuardNode(source)) {
-                        source.recycle();
-                        triggerKickOut();
-                        return;
-                    }
+        // --- CLICK DETECTION (Ultra-Fast) ---
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                // Instantly check if the clicked node mentions FocusGuard
+                if (isFocusGuardNode(source)) {
                     source.recycle();
+                    triggerKickOut();
+                    return;
                 }
+                source.recycle();
             }
+        }
 
-            // --- SCREEN DETECTION ---
-            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                if (isFocusGuardDetailScreen(root)) {
+        // --- SCREEN DETECTION (Only on full window change) ---
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            try {
+                // Ensure we are in an Accessibility-related screen
+                boolean isAccessibilityWindow = !root.findAccessibilityNodeInfosByText("Accessibility").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("এক্সেসিবিলিটি").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty();
+                
+                if (isAccessibilityWindow && isFocusGuardDetailScreen(root)) {
                     triggerKickOut();
                 }
+            } finally {
+                root.recycle();
             }
-        } finally {
-            root.recycle();
         }
     }
 
