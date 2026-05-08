@@ -2,38 +2,34 @@ package com.focusguard.app;
 
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.os.CountDownTimer;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.view.View;
 import android.widget.Button;
-import androidx.appcompat.widget.SwitchCompat;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.graphics.Color;
-import androidx.core.content.ContextCompat;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 
 public class MainActivity extends AppCompatActivity {
-
     private DevicePolicyManager dpm;
     private ComponentName adminComponent;
     private SharedPreferences prefs;
 
-    private TextView tvServiceStatus;
-    private TextView tvAdminStatus;
-    private Button btnEnableService;
-    private Button btnDisableService;
-    private Button btnEnableAdmin;
-    private Button btnDisableAdmin;
-    private SwitchCompat switchWhatsApp;
-    private SwitchCompat switchYouTube;
-    private SwitchCompat switchInstagram;
-    private SwitchCompat switchBlockAccessibility;
-    private SwitchCompat switchBlockDeviceAdmin;
-
+    private TextView tvServiceStatus, tvAdminStatus, tvTimerRemaining;
+    private Button btnEnableService, btnDisableService, btnEnableAdmin, btnDisableAdmin, btnStartFocus, btnSavePasscode;
+    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAccessibility, swBlockDeviceAdmin;
+    private EditText etFocusHours, etFocusMinutes, etPasscode;
+    
+    private CountDownTimer countDownTimer;
     private static final int REQUEST_ENABLE_ADMIN = 101;
 
     @Override
@@ -43,117 +39,180 @@ public class MainActivity extends AppCompatActivity {
 
         dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
         adminComponent = new ComponentName(this, AdminReceiver.class);
-        prefs = getSharedPreferences("settings", MODE_PRIVATE);
+        prefs = getSharedPreferences("FocusGuardPrefs", MODE_PRIVATE);
 
-        // Views
+        initViews();
+        setupListeners();
+        checkActiveTimer();
+    }
+
+    private void initViews() {
         tvServiceStatus = findViewById(R.id.tvServiceStatus);
         tvAdminStatus = findViewById(R.id.tvAdminStatus);
-        btnEnableService          = findViewById(R.id.btnEnableService);
-        btnDisableService         = findViewById(R.id.btnDisableService);
-        btnEnableAdmin            = findViewById(R.id.btnEnableAdmin);
-        btnDisableAdmin           = findViewById(R.id.btnDisableAdmin);
-        switchWhatsApp            = findViewById(R.id.switchWhatsApp);
-        switchYouTube             = findViewById(R.id.switchYouTube);
-        switchInstagram           = findViewById(R.id.switchInstagram);
-        switchBlockAccessibility  = findViewById(R.id.switchBlockAccessibility);
-        switchBlockDeviceAdmin     = findViewById(R.id.switchBlockDeviceAdmin);
+        tvTimerRemaining = findViewById(R.id.tvTimerRemaining);
+        btnEnableService = findViewById(R.id.btnEnableService);
+        btnDisableService = findViewById(R.id.btnDisableService);
+        btnEnableAdmin = findViewById(R.id.btnEnableAdmin);
+        btnDisableAdmin = findViewById(R.id.btnDisableAdmin);
+        btnStartFocus = findViewById(R.id.btnStartFocus);
+        btnSavePasscode = findViewById(R.id.btnSavePasscode);
+        swWhatsApp = findViewById(R.id.switchWhatsApp);
+        swYouTube = findViewById(R.id.switchYouTube);
+        swInstagram = findViewById(R.id.switchInstagram);
+        swBlockAccessibility = findViewById(R.id.switchBlockAccessibility);
+        swBlockDeviceAdmin = findViewById(R.id.switchBlockDeviceAdmin);
+        etFocusHours = findViewById(R.id.etFocusHours);
+        etFocusMinutes = findViewById(R.id.etFocusMinutes);
+        etPasscode = findViewById(R.id.etPasscode);
 
-        // Load saved settings
-        switchWhatsApp.setChecked(prefs.getBoolean("block_whatsapp", true));
-        switchYouTube.setChecked(prefs.getBoolean("block_youtube", true));
-        switchInstagram.setChecked(prefs.getBoolean("block_instagram", true));
-        switchBlockAccessibility.setChecked(prefs.getBoolean("block_accessibility", false));
-        switchBlockDeviceAdmin.setChecked(prefs.getBoolean("block_device_admin", false));
+        // Load Passcode
+        etPasscode.setText(prefs.getString("emergency_passcode", ""));
+    }
 
-        // Switch listeners
-        switchWhatsApp.setOnCheckedChangeListener((btn, checked) ->
-            prefs.edit().putBoolean("block_whatsapp", checked).apply());
-
-        switchYouTube.setOnCheckedChangeListener((btn, checked) ->
-            prefs.edit().putBoolean("block_youtube", checked).apply());
-
-        switchInstagram.setOnCheckedChangeListener((btn, checked) ->
-            prefs.edit().putBoolean("block_instagram", checked).apply());
-
-        switchBlockAccessibility.setOnCheckedChangeListener((btn, checked) -> {
-            prefs.edit().putBoolean("block_accessibility", checked).apply();
-            if (checked) {
-                Toast.makeText(this,
-                    "🚫 Accessibility protection ON — FocusGuard settings page is now blocked!",
-                    Toast.LENGTH_LONG).show();
-            } else {
-                Toast.makeText(this,
-                    "✅ Accessibility protection OFF",
-                    Toast.LENGTH_SHORT).show();
-            }
-        });
-
-        switchBlockDeviceAdmin.setOnCheckedChangeListener((btn, checked) -> {
-            prefs.edit().putBoolean("block_device_admin", checked).apply();
-            Toast.makeText(this, checked ? "🛡️ Admin Settings Protected" : "✅ Admin Protection OFF", Toast.LENGTH_SHORT).show();
-        });
-
-        // Enable Accessibility Service
+    private void setupListeners() {
         btnEnableService.setOnClickListener(v -> {
-            // Ensure logic is active when enabling
             prefs.edit().putBoolean("is_service_active", true).apply();
-            openAccessibilitySettings();
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
         });
 
-        // Disable Accessibility Service (Authorized bypass)
-        btnDisableService.setOnClickListener(v -> {
-            // 1. Temporarily disable the protection so the user can enter the page
-            prefs.edit().putBoolean("block_accessibility", false).apply();
-            switchBlockAccessibility.setChecked(false);
-            
-            // 2. Try Instant Stop (Android 7.0+)
+        btnDisableService.setOnClickListener(v -> promptPasscodeIfActive(() -> {
             BlockerService service = BlockerService.getInstance();
             if (service != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 service.disableService();
-                Toast.makeText(this, "🛡️ Service Stopped Instantly", Toast.LENGTH_SHORT).show();
                 updateStatusUI();
             } else {
-                // Fallback for older Android (Open settings)
-                Toast.makeText(this, 
-                    "Opening Settings. Please turn off FocusGuard Blocker.", 
-                    Toast.LENGTH_LONG).show();
-                openAccessibilitySettings();
+                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
             }
-        });
+        }));
 
-        // Enable Device Admin
         btnEnableAdmin.setOnClickListener(v -> {
             Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
-            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "FocusGuard needs admin to prevent unauthorized uninstallation.");
+            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Admin required to prevent uninstallation.");
             startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
         });
 
-        // Disable Device Admin (Instant Deactivation)
-        btnDisableAdmin.setOnClickListener(v -> {
-            try {
-                // 1. Instant UI Feedback (Zero Delay)
-                tvAdminStatus.setText("❌ Protection is OFF");
-                tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
-                btnEnableAdmin.setVisibility(android.view.View.VISIBLE);
-                btnDisableAdmin.setVisibility(android.view.View.GONE);
-                
-                // 2. Remove the active admin permission
-                dpm.removeActiveAdmin(adminComponent);
-                
-                // 3. Update persistence
-                prefs.edit().putBoolean("block_device_admin", false).apply();
-                switchBlockDeviceAdmin.setChecked(false);
-                
-                Toast.makeText(this, "🛡️ Device Admin Deactivated", Toast.LENGTH_SHORT).show();
-                
-                // 4. Final sync with system after a tiny delay
-                btnDisableAdmin.postDelayed(this::updateStatusUI, 100);
-            } catch (Exception e) {
-                updateStatusUI();
-                Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        btnDisableAdmin.setOnClickListener(v -> promptPasscodeIfActive(() -> {
+            dpm.removeActiveAdmin(adminComponent);
+            updateStatusUI();
+        }));
+
+        btnSavePasscode.setOnClickListener(v -> {
+            String pass = etPasscode.getText().toString();
+            if (pass.length() >= 4) {
+                prefs.edit().putString("emergency_passcode", pass).apply();
+                Toast.makeText(this, "Passcode Saved 🔐", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Minimum 4 digits required!", Toast.LENGTH_SHORT).show();
             }
         });
+
+        btnStartFocus.setOnClickListener(v -> startFocusSession());
+
+        swWhatsApp.setOnCheckedChangeListener((b, checked) -> prefs.edit().putBoolean("block_whatsapp", checked).apply());
+        swYouTube.setOnCheckedChangeListener((b, checked) -> prefs.edit().putBoolean("block_youtube", checked).apply());
+        swInstagram.setOnCheckedChangeListener((b, checked) -> prefs.edit().putBoolean("block_instagram", checked).apply());
+        swBlockAccessibility.setOnCheckedChangeListener((b, checked) -> prefs.edit().putBoolean("block_accessibility", checked).apply());
+        swBlockDeviceAdmin.setOnCheckedChangeListener((b, checked) -> prefs.edit().putBoolean("block_device_admin", checked).apply());
+    }
+
+    private void promptPasscodeIfActive(Runnable onSuccess) {
+        long endTime = prefs.getLong("timer_end_time", 0);
+        if (System.currentTimeMillis() < endTime) {
+            final EditText input = new EditText(this);
+            input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+            input.setHint("Enter Passcode");
+            
+            new android.app.AlertDialog.Builder(this)
+                .setTitle("🚨 Emergency Passcode")
+                .setMessage("Timer is active. You must enter the passcode to turn off protection.")
+                .setView(input)
+                .setPositiveButton("Verify", (dialog, which) -> {
+                    String pass = input.getText().toString();
+                    if (pass.equals(prefs.getString("emergency_passcode", ""))) {
+                        onSuccess.run();
+                    } else {
+                        Toast.makeText(this, "❌ Wrong Passcode!", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null).show();
+        } else {
+            onSuccess.run();
+        }
+    }
+
+    private void startFocusSession() {
+        int hours = getInt(etFocusHours);
+        int minutes = getInt(etFocusMinutes);
+        if (hours == 0 && minutes == 0) return;
+
+        long duration = (hours * 3600000L) + (minutes * 60000L);
+        long endTime = System.currentTimeMillis() + duration;
+        prefs.edit().putLong("timer_end_time", endTime).apply();
+        
+        // Auto-Enable Protection
+        prefs.edit().putBoolean("block_accessibility", true).putBoolean("block_device_admin", true).apply();
+        swBlockAccessibility.setChecked(true);
+        swBlockDeviceAdmin.setChecked(true);
+        
+        startTimer(duration);
+        updateStatusUI();
+        Toast.makeText(this, "🚀 Focus Mode Activated!", Toast.LENGTH_SHORT).show();
+    }
+
+    private void startTimer(long duration) {
+        if (countDownTimer != null) countDownTimer.cancel();
+        tvTimerRemaining.setVisibility(View.VISIBLE);
+        countDownTimer = new CountDownTimer(duration, 1000) {
+            public void onTick(long ms) {
+                long h = ms / 3600000;
+                long m = (ms % 3600000) / 60000;
+                long s = (ms % 60000) / 1000;
+                tvTimerRemaining.setText(String.format("Time Remaining: %02d:%02d:%02d", h, m, s));
+            }
+            public void onFinish() {
+                tvTimerRemaining.setText("Session Finished! 🎉");
+                tvTimerRemaining.setTextColor(Color.parseColor("#4CAF50"));
+            }
+        }.start();
+    }
+
+    private void checkActiveTimer() {
+        long endTime = prefs.getLong("timer_end_time", 0);
+        long diff = endTime - System.currentTimeMillis();
+        if (diff > 0) startTimer(diff);
+    }
+
+    private void updateStatusUI() {
+        boolean isServiceOn = isAccessibilityServiceEnabled();
+        boolean isAdminOn = dpm.isAdminActive(adminComponent);
+
+        tvServiceStatus.setText(isServiceOn ? "✅ Accessibility Service is ON" : "❌ Accessibility Service is OFF");
+        tvServiceStatus.setTextColor(isServiceOn ? Color.parseColor("#4CAF50") : Color.parseColor("#F44336"));
+        btnEnableService.setVisibility(isServiceOn ? View.GONE : View.VISIBLE);
+        btnDisableService.setVisibility(isServiceOn ? View.VISIBLE : View.GONE);
+
+        tvAdminStatus.setText(isAdminOn ? "✅ Protection is ON" : "❌ Protection is OFF");
+        tvAdminStatus.setTextColor(isAdminOn ? Color.parseColor("#4CAF50") : Color.parseColor("#F44336"));
+        btnEnableAdmin.setVisibility(isAdminOn ? View.GONE : View.VISIBLE);
+        btnDisableAdmin.setVisibility(isAdminOn ? View.VISIBLE : View.GONE);
+
+        swWhatsApp.setChecked(prefs.getBoolean("block_whatsapp", true));
+        swYouTube.setChecked(prefs.getBoolean("block_youtube", true));
+        swInstagram.setChecked(prefs.getBoolean("block_instagram", true));
+        swBlockAccessibility.setChecked(prefs.getBoolean("block_accessibility", false));
+        swBlockDeviceAdmin.setChecked(prefs.getBoolean("block_device_admin", false));
+    }
+
+    private int getInt(EditText et) {
+        String s = et.getText().toString();
+        return TextUtils.isEmpty(s) ? 0 : Integer.parseInt(s);
+    }
+
+    private boolean isAccessibilityServiceEnabled() {
+        String service = getPackageName() + "/" + BlockerService.class.getName();
+        String enabled = Settings.Secure.getString(getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        return enabled != null && enabled.contains(service);
     }
 
     @Override
@@ -162,64 +221,9 @@ public class MainActivity extends AppCompatActivity {
         updateStatusUI();
     }
 
-    private void updateStatusUI() {
-        boolean isServiceEnabledInSettings = isAccessibilityServiceEnabled();
-        boolean isServiceLogicActive = prefs.getBoolean("is_service_active", true);
-
-        if (isServiceEnabledInSettings && isServiceLogicActive) {
-            tvServiceStatus.setText("✅ Accessibility Service is ON");
-            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_on));
-            btnEnableService.setVisibility(android.view.View.GONE);
-            btnDisableService.setVisibility(android.view.View.VISIBLE);
-        } else if (isServiceEnabledInSettings && !isServiceLogicActive) {
-            tvServiceStatus.setText("⚠️ Service is PAUSED (Logic Off)");
-            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
-            btnEnableService.setVisibility(android.view.View.VISIBLE);
-            btnEnableService.setText("Resume Blocker Service");
-            btnDisableService.setVisibility(android.view.View.GONE);
-        } else {
-            tvServiceStatus.setText("❌ Accessibility Service is OFF");
-            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
-            btnEnableService.setVisibility(android.view.View.VISIBLE);
-            btnEnableService.setText("Enable Accessibility Service");
-            btnDisableService.setVisibility(android.view.View.GONE);
-        }
-
-        if (dpm.isAdminActive(adminComponent)) {
-            tvAdminStatus.setText("✅ Protection is ON");
-            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.status_on));
-            btnEnableAdmin.setVisibility(android.view.View.GONE);
-            btnDisableAdmin.setVisibility(android.view.View.VISIBLE);
-        } else {
-            tvAdminStatus.setText("❌ Protection is OFF");
-            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.status_off));
-            btnEnableAdmin.setVisibility(android.view.View.VISIBLE);
-            btnDisableAdmin.setVisibility(android.view.View.GONE);
-            btnEnableAdmin.setText("Enable Device Admin");
-        }
-    }
-
-    private boolean isAccessibilityServiceEnabled() {
-        String serviceName = getPackageName() + "/" + BlockerService.class.getName();
-        String enabledServices = Settings.Secure.getString(
-            getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        if (TextUtils.isEmpty(enabledServices)) return false;
-        return enabledServices.contains(serviceName);
-    }
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_ENABLE_ADMIN) {
-            updateStatusUI();
-        }
-    }
-
-    private void openAccessibilitySettings() {
-        Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-        startActivity(intent);
-        Toast.makeText(this,
-            "Find FocusGuard Blocker in the list",
-            Toast.LENGTH_LONG).show();
+        if (requestCode == REQUEST_ENABLE_ADMIN) updateStatusUI();
     }
 }
