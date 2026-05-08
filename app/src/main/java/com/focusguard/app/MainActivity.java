@@ -17,6 +17,7 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
+import androidx.core.content.ContextCompat;
 
 public class MainActivity extends AppCompatActivity {
     
@@ -35,15 +36,20 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        try {
+            setContentView(R.layout.activity_main);
 
-        pref = new PreferenceManager(this);
-        dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
-        adminComponent = new ComponentName(this, AdminReceiver.class);
+            pref = new PreferenceManager(this);
+            dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            adminComponent = new ComponentName(this, AdminReceiver.class);
 
-        initViews();
-        setupListeners();
-        syncUIWithState();
+            initViews();
+            setupListeners();
+            syncUIWithState();
+        } catch (Exception e) {
+            Toast.makeText(this, "App initialization error. Please check permissions.", Toast.LENGTH_LONG).show();
+            e.printStackTrace();
+        }
     }
 
     private void initViews() {
@@ -65,11 +71,14 @@ public class MainActivity extends AppCompatActivity {
         etMinutes        = findViewById(R.id.etFocusMinutes);
         etPassword       = findViewById(R.id.etPasscode);
 
-        // Load saved password
-        etPassword.setText(pref.getEmergencyPassword());
+        if (pref != null && etPassword != null) {
+            etPassword.setText(pref.getEmergencyPassword());
+        }
     }
 
     private void setupListeners() {
+        if (btnEnableService == null) return;
+
         btnEnableService.setOnClickListener(v -> {
             pref.setServiceActive(true);
             startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
@@ -80,9 +89,8 @@ public class MainActivity extends AppCompatActivity {
             if (service != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 service.disableService();
                 
-                // Immediate UI feedback
                 tvServiceStatus.setText("❌ Blocker is Inactive");
-                tvServiceStatus.setTextColor(getResources().getColor(R.color.danger_red));
+                tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_red));
                 btnEnableService.setVisibility(View.VISIBLE);
                 btnDisableService.setVisibility(View.GONE);
             } else {
@@ -100,19 +108,13 @@ public class MainActivity extends AppCompatActivity {
 
         btnDisableAdmin.setOnClickListener(v -> promptPassword(() -> {
             try {
-                // 1. PERFORM REMOVAL
                 dpm.removeActiveAdmin(adminComponent);
-                
-                // 2. OPTIMISTIC UI: Match new design
                 tvAdminStatus.setText("Device Admin: OFF");
-                tvAdminStatus.setTextColor(getResources().getColor(R.color.danger_red));
+                tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_red));
                 btnEnableAdmin.setVisibility(View.VISIBLE);
                 btnDisableAdmin.setVisibility(View.GONE);
                 pref.setDeviceAdminProtected(false);
-                
-                // 3. Delayed sync
                 v.postDelayed(this::syncUIWithState, 800);
-                
                 Toast.makeText(this, "🛡️ Protection Disabled", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
                 syncUIWithState();
@@ -131,7 +133,6 @@ public class MainActivity extends AppCompatActivity {
 
         btnStartFocus.setOnClickListener(v -> startFocusSession());
 
-        // Switches
         swWhatsApp.setOnCheckedChangeListener((b, checked) -> pref.setWhatsAppBlocked(checked));
         swYouTube.setOnCheckedChangeListener((b, checked) -> pref.setYouTubeBlocked(checked));
         swInstagram.setOnCheckedChangeListener((b, checked) -> pref.setInstagramBlocked(checked));
@@ -146,7 +147,6 @@ public class MainActivity extends AppCompatActivity {
 
         long duration = (h * 3600000L) + (m * 60000L);
         pref.setTimerEndTime(System.currentTimeMillis() + duration);
-        
         pref.setServiceActive(true);
         pref.setAccessibilityProtected(true);
         pref.setDeviceAdminProtected(true);
@@ -180,60 +180,56 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void syncUIWithState() {
-        if (isFinishing()) return;
+        if (isFinishing() || tvServiceStatus == null) return;
 
         boolean serviceOn = isAccessibilityEnabled();
         boolean adminOn   = dpm.isAdminActive(adminComponent);
         boolean timerOn   = pref.isTimerActive();
 
-        // 1. Accessibility Service Status
         if (serviceOn) {
             tvServiceStatus.setText("✅ Blocker is Active");
-            tvServiceStatus.setTextColor(getResources().getColor(R.color.success_green));
+            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.success_green));
             btnEnableService.setVisibility(View.GONE);
             btnDisableService.setVisibility(View.VISIBLE);
         } else {
             tvServiceStatus.setText("❌ Blocker is Inactive");
-            tvServiceStatus.setTextColor(getResources().getColor(R.color.danger_red));
+            tvServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_red));
             btnEnableService.setVisibility(View.VISIBLE);
             btnDisableService.setVisibility(View.GONE);
         }
 
-        // 2. Admin Protection Status
         if (adminOn) {
             tvAdminStatus.setText("Device Admin: ON");
-            tvAdminStatus.setTextColor(getResources().getColor(R.color.success_green));
+            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.success_green));
             btnEnableAdmin.setVisibility(View.GONE);
             btnDisableAdmin.setVisibility(View.VISIBLE);
         } else {
             tvAdminStatus.setText("Device Admin: OFF");
-            tvAdminStatus.setTextColor(getResources().getColor(R.color.danger_red));
+            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_red));
             btnEnableAdmin.setVisibility(View.VISIBLE);
             btnDisableAdmin.setVisibility(View.GONE);
         }
 
-        // 3. Switches State
         swWhatsApp.setChecked(pref.isWhatsAppBlocked());
         swYouTube.setChecked(pref.isYouTubeBlocked());
         swInstagram.setChecked(pref.isInstagramBlocked());
         swBlockAcc.setChecked(pref.isAccessibilityProtected());
         swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
 
-        // 4. Lock internal settings if timer active
         setInternalUIEnabled(!timerOn);
 
-        // 5. Timer Display
         if (timerOn) {
             long remaining = pref.getTimerEndTime() - System.currentTimeMillis();
             startCountdown(remaining);
-            tvTimerRemaining.setTextColor(Color.parseColor("#38BDF8")); // Bright focus blue
+            tvTimerRemaining.setTextColor(Color.parseColor("#38BDF8"));
         } else {
             tvTimerRemaining.setText("READY TO FOCUS");
-            tvTimerRemaining.setTextColor(Color.parseColor("#475569")); // Muted slate
+            tvTimerRemaining.setTextColor(Color.parseColor("#475569"));
         }
     }
 
     private void setInternalUIEnabled(boolean enabled) {
+        if (swWhatsApp == null) return;
         swWhatsApp.setEnabled(enabled);
         swYouTube.setEnabled(enabled);
         swInstagram.setEnabled(enabled);
@@ -245,7 +241,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startCountdown(long ms) {
-        if (countDownTimer != null) countDownTimer.cancel();
+        if (countDownTimer != null) {
+            countDownTimer.cancel();
+            countDownTimer = null;
+        }
         tvTimerRemaining.setVisibility(View.VISIBLE);
         countDownTimer = new CountDownTimer(ms, 1000) {
             public void onTick(long msRemaining) {
@@ -264,6 +263,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private int getVal(EditText et) {
+        if (et == null) return 0;
         String s = et.getText().toString();
         return (s.isEmpty()) ? 0 : Integer.parseInt(s);
     }
@@ -274,6 +274,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override protected void onResume() { super.onResume(); syncUIWithState(); }
-    @Override protected void onDestroy() { if (countDownTimer != null) countDownTimer.cancel(); super.onDestroy(); }
+    @Override protected void onDestroy() { if (countDownTimer != null) { countDownTimer.cancel(); } super.onDestroy(); }
     @Override protected void onActivityResult(int i, int j, Intent d) { super.onActivityResult(i, j, d); syncUIWithState(); }
 }
