@@ -217,6 +217,7 @@ public class MainActivity extends AppCompatActivity {
         swYouTube.setChecked(pref.isYouTubeBlocked());
         swInstagram.setChecked(pref.isInstagramBlocked());
         swBlockAcc.setChecked(pref.isAccessibilityProtected());
+        swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
 
         // 4. Lock internal settings if timer active
         setInternalUIEnabled(!timerOn);

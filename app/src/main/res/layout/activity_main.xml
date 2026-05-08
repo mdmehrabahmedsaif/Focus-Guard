@@ -380,10 +380,10 @@
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
                         android:layout_marginTop="20dp"
-                        android:gravity="center_vertical">
-                        
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
@@ -421,6 +421,12 @@
                             android:text="OFF"
                             android:textColor="@color/danger_red"
                             android:visibility="gone"/>
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/switchBlockDeviceAdmin"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"/>
                     </LinearLayout>
 
                     <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" android:layout_marginVertical="12dp"/>
