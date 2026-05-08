@@ -39,7 +39,12 @@ public class MainActivity extends AppCompatActivity {
 
         dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
         adminComponent = new ComponentName(this, AdminReceiver.class);
-        prefs = getSharedPreferences("FocusGuardPrefs", MODE_PRIVATE);
+        prefs = getSharedPreferences("FocusGuardSettings", MODE_PRIVATE);
+
+        // Ensure service is active by default if not set
+        if (!prefs.contains("is_service_active")) {
+            prefs.edit().putBoolean("is_service_active", true).apply();
+        }
 
         initViews();
         setupListeners();
@@ -150,8 +155,12 @@ public class MainActivity extends AppCompatActivity {
         long endTime = System.currentTimeMillis() + duration;
         prefs.edit().putLong("timer_end_time", endTime).apply();
         
-        // Auto-Enable Protection
-        prefs.edit().putBoolean("block_accessibility", true).putBoolean("block_device_admin", true).apply();
+        // Auto-Enable Protection & Logic
+        prefs.edit()
+            .putBoolean("is_service_active", true)
+            .putBoolean("block_accessibility", true)
+            .putBoolean("block_device_admin", true)
+            .apply();
         swBlockAccessibility.setChecked(true);
         swBlockDeviceAdmin.setChecked(true);
         

@@ -55,7 +55,7 @@ public class BlockerService extends AccessibilityService {
     protected void onServiceConnected() {
         super.onServiceConnected();
         instance = this;
-        prefs = getSharedPreferences("settings", MODE_PRIVATE);
+        prefs = getSharedPreferences("FocusGuardSettings", MODE_PRIVATE);
     }
 
     @Override
