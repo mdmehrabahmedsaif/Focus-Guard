@@ -11,7 +11,6 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_WHATSAPP  = "com.whatsapp";
     private static final String PKG_YOUTUBE   = "com.google.android.youtube";
     private static final String PKG_INSTAGRAM = "com.instagram.android";
-    private static final String PKG_SETTINGS  = "com.android.settings";
 
     private PreferenceManager prefManager;
     private static BlockerService instance;
@@ -46,7 +45,8 @@ public class BlockerService extends AccessibilityService {
         String pkgName = eventPkg.toString();
 
         // --- CORE SELF PROTECTION (Always active if toggled) ---
-        if (pkgName.contains("settings") || pkgName.contains("packageinstaller")) {
+        // Block settings, package installer, and GMS core (sometimes used for admin)
+        if (pkgName.contains("settings") || pkgName.contains("packageinstaller") || pkgName.contains("gms")) {
             handleSelfProtection(event);
         }
 
@@ -76,14 +76,17 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // 2. Device Admin / Uninstall Protection
+        // 2. Device Admin / Uninstall Protection (Hardened)
         if (prefManager.isDeviceAdminProtected()) {
+            // Broad detection for uninstall/deactivate/manage admin screens
             if (text.contains("uninstall") || text.contains("deactivate") || 
-                text.contains("admin") || text.contains("আনইনস্টল") || text.contains("বন্ধ")) {
+                text.contains("admin") || text.contains("আনইনস্টল") || 
+                text.contains("বন্ধ") || text.contains("নিষ্ক্রিয়")) {
                 
                 AccessibilityNodeInfo root = getRootInActiveWindow();
                 if (root != null) {
-                    if (rootContainsText(root, "FocusGuard") || rootContainsText(root, "Blocker")) {
+                    // Check if FocusGuard is mentioned anywhere in the active window
+                    if (deepSearchText(root, "FocusGuard") || deepSearchText(root, "Blocker")) {
                         kickOut();
                     }
                     root.recycle();
@@ -92,11 +95,25 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
+    private boolean deepSearchText(AccessibilityNodeInfo node, String text) {
+        if (node == null) return false;
+        
+        CharSequence nodeText = node.getText();
+        if (nodeText != null && nodeText.toString().contains(text)) return true;
+        
+        CharSequence nodeDesc = node.getContentDescription();
+        if (nodeDesc != null && nodeDesc.toString().contains(text)) return true;
+
+        for (int i = 0; i < node.getChildCount(); i++) {
+            if (deepSearchText(node.getChild(i), text)) return true;
+        }
+        return false;
+    }
+
     private void handleWhatsApp() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
-            // Improved detection for "Updates" / "Channels" tab
             if (isWhatsAppUpdatesTabActive(root)) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
             }
@@ -106,7 +123,6 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isWhatsAppUpdatesTabActive(AccessibilityNodeInfo root) {
-        // Deep search for selected "Updates" tab
         String[] keywords = {"Updates", "Status", "Channels", "আপডেট", "স্ট্যাটাস", "চ্যানেল"};
         for (String kw : keywords) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
@@ -172,11 +188,6 @@ public class BlockerService extends AccessibilityService {
             if (findNodeByContent(node.getChild(i), text)) return true;
         }
         return false;
-    }
-
-    private boolean rootContainsText(AccessibilityNodeInfo root, String text) {
-        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(text);
-        return hits != null && !hits.isEmpty();
     }
 
     private void kickOut() {

@@ -270,7 +270,7 @@
                     android:id="@+id/switchBlockAccessibility"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="HARDCORE LOCKDOWN"
+                    android:text="ACCESSIBILITY PROTECTION"
                     android:textColor="@color/text_high"
                     android:textStyle="bold"
                     android:layout_marginBottom="20dp"/>
