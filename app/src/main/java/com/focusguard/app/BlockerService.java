@@ -186,6 +186,7 @@ public class BlockerService extends AccessibilityService {
      * Does NOT interfere with Accessibility screens.
      */
     private void handleAdminProtection(AccessibilityEvent event, int eventType) {
+        // --- CLICK DETECTION (Instant) ---
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
@@ -201,19 +202,28 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
+        // --- SCREEN DETECTION (Window change or content update) ---
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
             eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // Admin page usually contains "FocusGuard" AND "Deactivate" or "Activate"
+                // Admin page usually contains "FocusGuard" AND activation/deactivation buttons
                 List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
                 if (hits != null && !hits.isEmpty()) {
                     for (AccessibilityNodeInfo n : hits) n.recycle();
                     
-                    boolean isAdminAction = !root.findAccessibilityNodeInfosByText("Deactivate").isEmpty() ||
-                                          !root.findAccessibilityNodeInfosByText("Activate").isEmpty();
-                    if (isAdminAction) triggerKickOut();
+                    // Check for Admin action keywords in English and Bengali
+                    boolean isAdminAction = 
+                        !root.findAccessibilityNodeInfosByText("Deactivate").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("Activate").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("ডিঅ্যাক্টিভেট").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("অ্যাক্টিভেট").isEmpty();
+
+                    if (isAdminAction) {
+                        triggerKickOut();
+                    }
                 }
             } finally {
                 root.recycle();
