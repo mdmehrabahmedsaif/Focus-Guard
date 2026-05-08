@@ -469,8 +469,8 @@
                 android:id="@+id/etPasscode"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Set Passcode (e.g. 1234)"
-                android:inputType="numberPassword"
+                android:hint="Set Emergency Password"
+                android:inputType="textPassword"
                 android:textColor="@color/text_primary"
                 android:backgroundTint="@color/status_on"/>
 

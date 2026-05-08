@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.provider.Settings;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
@@ -41,11 +42,6 @@ public class MainActivity extends AppCompatActivity {
         adminComponent = new ComponentName(this, AdminReceiver.class);
         prefs = getSharedPreferences("FocusGuardSettings", MODE_PRIVATE);
 
-        // Ensure service is active by default if not set
-        if (!prefs.contains("is_service_active")) {
-            prefs.edit().putBoolean("is_service_active", true).apply();
-        }
-
         initViews();
         setupListeners();
         checkActiveTimer();
@@ -70,8 +66,8 @@ public class MainActivity extends AppCompatActivity {
         etFocusMinutes = findViewById(R.id.etFocusMinutes);
         etPasscode = findViewById(R.id.etPasscode);
 
-        // Load Passcode
-        etPasscode.setText(prefs.getString("emergency_passcode", ""));
+        // Load Password
+        etPasscode.setText(prefs.getString("emergency_password", ""));
     }
 
     private void setupListeners() {
@@ -80,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
             startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
         });
 
-        btnDisableService.setOnClickListener(v -> promptPasscodeIfActive(() -> {
+        btnDisableService.setOnClickListener(v -> promptPasswordIfActive(() -> {
             BlockerService service = BlockerService.getInstance();
             if (service != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 service.disableService();
@@ -97,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
             startActivityForResult(intent, REQUEST_ENABLE_ADMIN);
         });
 
-        btnDisableAdmin.setOnClickListener(v -> promptPasscodeIfActive(() -> {
+        btnDisableAdmin.setOnClickListener(v -> promptPasswordIfActive(() -> {
             dpm.removeActiveAdmin(adminComponent);
             updateStatusUI();
         }));
@@ -105,10 +101,10 @@ public class MainActivity extends AppCompatActivity {
         btnSavePasscode.setOnClickListener(v -> {
             String pass = etPasscode.getText().toString();
             if (pass.length() >= 4) {
-                prefs.edit().putString("emergency_passcode", pass).apply();
-                Toast.makeText(this, "Passcode Saved 🔐", Toast.LENGTH_SHORT).show();
+                prefs.edit().putString("emergency_password", pass).apply();
+                Toast.makeText(this, "Password Saved 🔐", Toast.LENGTH_SHORT).show();
             } else {
-                Toast.makeText(this, "Minimum 4 digits required!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Minimum 4 characters required!", Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -121,23 +117,29 @@ public class MainActivity extends AppCompatActivity {
         swBlockDeviceAdmin.setOnCheckedChangeListener((b, checked) -> prefs.edit().putBoolean("block_device_admin", checked).apply());
     }
 
-    private void promptPasscodeIfActive(Runnable onSuccess) {
+    private void promptPasswordIfActive(Runnable onSuccess) {
         long endTime = prefs.getLong("timer_end_time", 0);
         if (System.currentTimeMillis() < endTime) {
             final EditText input = new EditText(this);
-            input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-            input.setHint("Enter Passcode");
+            input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            input.setHint("Enter Emergency Password");
             
             new android.app.AlertDialog.Builder(this)
-                .setTitle("🚨 Emergency Passcode")
-                .setMessage("Timer is active. You must enter the passcode to turn off protection.")
+                .setTitle("🚨 Security Bypass")
+                .setMessage("A focus session is active. Enter your PASSWORD to unlock settings.")
                 .setView(input)
-                .setPositiveButton("Verify", (dialog, which) -> {
+                .setPositiveButton("Unlock", (dialog, which) -> {
                     String pass = input.getText().toString();
-                    if (pass.equals(prefs.getString("emergency_passcode", ""))) {
+                    if (pass.equals(prefs.getString("emergency_password", ""))) {
+                        // End timer immediately
+                        prefs.edit().putLong("timer_end_time", 0).apply();
+                        if (countDownTimer != null) countDownTimer.cancel();
+                        tvTimerRemaining.setVisibility(View.GONE);
+                        lockInternalSettings(false);
                         onSuccess.run();
+                        Toast.makeText(this, "🔓 Settings Unlocked", Toast.LENGTH_SHORT).show();
                     } else {
-                        Toast.makeText(this, "❌ Wrong Passcode!", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "❌ Incorrect Password!", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("Cancel", null).show();
@@ -155,18 +157,28 @@ public class MainActivity extends AppCompatActivity {
         long endTime = System.currentTimeMillis() + duration;
         prefs.edit().putLong("timer_end_time", endTime).apply();
         
-        // Auto-Enable Protection & Logic
-        prefs.edit()
-            .putBoolean("is_service_active", true)
-            .putBoolean("block_accessibility", true)
-            .putBoolean("block_device_admin", true)
-            .apply();
+        prefs.edit().putBoolean("is_service_active", true).putBoolean("block_accessibility", true).putBoolean("block_device_admin", true).apply();
         swBlockAccessibility.setChecked(true);
         swBlockDeviceAdmin.setChecked(true);
         
+        lockInternalSettings(true);
         startTimer(duration);
         updateStatusUI();
-        Toast.makeText(this, "🚀 Focus Mode Activated!", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "🚀 Focus Mode Locked!", Toast.LENGTH_SHORT).show();
+    }
+
+    private void lockInternalSettings(boolean locked) {
+        boolean enabled = !locked;
+        swWhatsApp.setEnabled(enabled);
+        swYouTube.setEnabled(enabled);
+        swInstagram.setEnabled(enabled);
+        swBlockAccessibility.setEnabled(enabled);
+        swBlockDeviceAdmin.setEnabled(enabled);
+        etFocusHours.setEnabled(enabled);
+        etFocusMinutes.setEnabled(enabled);
+        btnStartFocus.setEnabled(enabled);
+        // Password field stays enabled so user can see what they set, 
+        // but they can't start a NEW session if one is active.
     }
 
     private void startTimer(long duration) {
@@ -182,6 +194,7 @@ public class MainActivity extends AppCompatActivity {
             public void onFinish() {
                 tvTimerRemaining.setText("Session Finished! 🎉");
                 tvTimerRemaining.setTextColor(Color.parseColor("#4CAF50"));
+                lockInternalSettings(false);
             }
         }.start();
     }
@@ -189,7 +202,12 @@ public class MainActivity extends AppCompatActivity {
     private void checkActiveTimer() {
         long endTime = prefs.getLong("timer_end_time", 0);
         long diff = endTime - System.currentTimeMillis();
-        if (diff > 0) startTimer(diff);
+        if (diff > 0) {
+            startTimer(diff);
+            lockInternalSettings(true);
+        } else {
+            lockInternalSettings(false);
+        }
     }
 
     private void updateStatusUI() {
