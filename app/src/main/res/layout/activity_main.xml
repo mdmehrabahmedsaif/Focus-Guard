@@ -357,5 +357,131 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- Focus Timer Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/card_background"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:layout_marginBottom="12dp"
+            android:elevation="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⏳ Focus Timer"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Set a time to stay locked"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="12dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center">
+
+                <EditText
+                    android:id="@+id/etFocusHours"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Hours"
+                    android:inputType="number"
+                    android:textColor="@color/text_primary"
+                    android:backgroundTint="@color/accent_blue"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" : "
+                    android:textSize="20sp"
+                    android:textColor="@color/text_primary"/>
+
+                <EditText
+                    android:id="@+id/etFocusMinutes"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Min"
+                    android:inputType="number"
+                    android:textColor="@color/text_primary"
+                    android:backgroundTint="@color/accent_blue"/>
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnStartFocus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Start Focus Session"
+                android:backgroundTint="@color/accent_blue"
+                android:textColor="#FFFFFF" />
+
+            <TextView
+                android:id="@+id/tvTimerRemaining"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="No active session"
+                android:textAlignment="center"
+                android:textColor="@color/status_off"
+                android:visibility="gone"/>
+        </LinearLayout>
+
+        <!-- Security Passcode Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/card_background"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:layout_marginBottom="32dp"
+            android:elevation="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔐 Security Passcode"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Emergency exit passcode"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="12dp"/>
+
+            <EditText
+                android:id="@+id/etPasscode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Set Passcode (e.g. 1234)"
+                android:inputType="numberPassword"
+                android:textColor="@color/text_primary"
+                android:backgroundTint="@color/status_on"/>
+
+            <Button
+                android:id="@+id/btnSavePasscode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Save Passcode"
+                android:backgroundTint="@color/status_on"
+                android:textColor="#FFFFFF"/>
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>
