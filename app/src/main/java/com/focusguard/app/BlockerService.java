@@ -209,21 +209,27 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // Admin page usually contains "FocusGuard" AND activation/deactivation buttons
-                List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
-                if (hits != null && !hits.isEmpty()) {
-                    for (AccessibilityNodeInfo n : hits) n.recycle();
-                    
-                    // Check for Admin action keywords in English and Bengali
-                    // Detail screens usually have specific action labels on buttons
-                    boolean isAdminDetail = 
-                        !root.findAccessibilityNodeInfosByText("Deactivate").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("Activate").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("ডিঅ্যাক্টিভেট").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("অ্যাক্টিভেট").isEmpty();
+                // To avoid blocking the LIST page, we look for a "Cancel" button
+                // Confirmation/Detail pages have "Cancel", but the list page doesn't.
+                boolean hasCancel = !root.findAccessibilityNodeInfosByText("Cancel").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("বাতিল").isEmpty();
 
-                    if (isAdminDetail) {
-                        triggerKickOut();
+                if (hasCancel) {
+                    // It's a confirmation screen, now check if it's about FocusGuard
+                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                    if (hits != null && !hits.isEmpty()) {
+                        for (AccessibilityNodeInfo n : hits) n.recycle();
+                        
+                        // Look for action buttons
+                        boolean isActionPage = 
+                            !root.findAccessibilityNodeInfosByText("Deactivate").isEmpty() ||
+                            !root.findAccessibilityNodeInfosByText("Activate").isEmpty() ||
+                            !root.findAccessibilityNodeInfosByText("ডিঅ্যাক্টিভেট").isEmpty() ||
+                            !root.findAccessibilityNodeInfosByText("অ্যাক্টিভেট").isEmpty();
+
+                        if (isActionPage) {
+                            triggerKickOut();
+                        }
                     }
                 }
             } finally {
