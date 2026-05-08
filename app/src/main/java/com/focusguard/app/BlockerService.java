@@ -138,21 +138,30 @@ public class BlockerService extends AccessibilityService {
      *                           We match by the UNIQUE DESCRIPTION here.
      */
     private void selfProtect(AccessibilityEvent event) {
-        // 1. Get current package name safely
+        // 1. FASTEST BYPASS: If event is from our app, stop immediately.
         CharSequence eventPkg = event.getPackageName();
         String packageName = (eventPkg != null) ? eventPkg.toString().toLowerCase() : "";
-        String myPkg = getPackageName().toLowerCase();
-
-        // 2. EXPLICIT BYPASS: Never block our own app's UI
-        if (packageName.equals(myPkg)) {
+        if (packageName.equals(getPackageName().toLowerCase())) {
             return;
+        }
+
+        // 2. ROOT WINDOW BYPASS: Check the actual focused window
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null) {
+            try {
+                CharSequence rootPkg = root.getPackageName();
+                if (rootPkg != null && rootPkg.toString().equalsIgnoreCase(getPackageName())) {
+                    return; // We are in our app, definitely don't block.
+                }
+            } finally {
+                root.recycle();
+            }
         }
 
         int type = event.getEventType();
 
         // ── A: CLICK-BASED PROTECTION (Surgical) ─────────────────────────────
         // We ONLY block clicks if we are in a Settings-related app.
-        // This PREVENTS blocking the app launch from Home Screen/Launcher!
         if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || type == AccessibilityEvent.TYPE_VIEW_SELECTED) {
             if (packageName.contains("settings") && eventTextContainsFocusGuardKeyword(event)) {
                 kickOut();
