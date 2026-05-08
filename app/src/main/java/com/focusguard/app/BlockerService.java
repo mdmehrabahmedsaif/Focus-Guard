@@ -347,16 +347,16 @@ public class BlockerService extends AccessibilityService {
      * WHATSAPP BLOCKING (Updates, Status, Channels)
      */
     private void handleWhatsApp(AccessibilityEvent event, int eventType) {
-        // 1. CLICK DETECTION (Instant kick-out on tab tap)
+        // 1. CLICK DETECTION
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             String text = getEventText(event).toLowerCase();
             if (isWhatsAppRestrictedKeyword(text)) {
-                triggerKickOut();
+                triggerSequentialKickOut();
                 return;
             }
         }
 
-        // 2. WINDOW SCAN (Detection on screen change or content update)
+        // 2. WINDOW SCAN
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
@@ -364,12 +364,20 @@ public class BlockerService extends AccessibilityService {
             if (root == null) return;
             try {
                 if (isWhatsAppRestrictedVisible(root)) {
-                    triggerKickOut();
+                    triggerSequentialKickOut();
                 }
             } finally {
                 root.recycle();
             }
         }
+    }
+
+    /** Sequential kick-out: Back to app home, then exit to device home */
+    private void triggerSequentialKickOut() {
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            performGlobalAction(GLOBAL_ACTION_HOME);
+        }, 50);
     }
 
     private boolean isWhatsAppRestrictedVisible(AccessibilityNodeInfo root) {
