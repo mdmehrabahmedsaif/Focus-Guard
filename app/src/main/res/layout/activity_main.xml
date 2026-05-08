@@ -258,6 +258,15 @@
                 </LinearLayout>
 
                 <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchBlockDeviceAdmin"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="DEVICE ADMIN PROTECTION"
+                    android:textColor="@color/text_high"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="16dp"/>
+
+                <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switchBlockAccessibility"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
