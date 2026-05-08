@@ -155,13 +155,26 @@ public class BlockerService extends AccessibilityService {
 
     /** Detects if the current window is specifically the FocusGuard service detail page */
     private boolean isFocusGuardDetailScreen(AccessibilityNodeInfo root) {
-        // 1. Window must contain our service name
+        // 1. If it's a LIST page, it's NOT a detail screen.
+        // We check for common list titles in English and Bengali.
+        String[] listTitles = {"Accessibility", "Downloaded services", "এক্সেসিবিলিটি", "ডাউনলোড করা পরিষেবা", "FocusGuard Blocker"};
+        for (String title : listTitles) {
+            if (!root.findAccessibilityNodeInfosByText(title).isEmpty()) {
+                // If we find "Accessibility" or the list header, we check if there are multiple items
+                // Detail pages usually don't have the list header text.
+                // However, to be safe, if we are in the list, we return false.
+                // Special case: "FocusGuard Blocker" text in the list.
+                return false; 
+            }
+        }
+
+        // 2. Window must contain our service name
         List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
         if (hits == null || hits.isEmpty()) return false;
         for (AccessibilityNodeInfo n : hits) n.recycle();
 
-        // 2. Distinguish DETAIL from LIST
-        // Detail page has "Use [Service]" OR "ব্যবহার" OR a Switch/Toggle
+        // 3. Distinguish DETAIL from LIST
+        // Detail page has "Use" or "ব্যবহার" (Bengali) or a Switch/Toggle widget
         boolean hasDetailKeywords = !root.findAccessibilityNodeInfosByText("Use").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("On/Off").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("ব্যবহার").isEmpty();
@@ -213,8 +226,13 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
+                // IGNORE LIST PAGE: Look for list titles
+                String[] listTitles = {"Device administrators", "Device admin apps", "ডিভাইস অ্যাডমিনিস্ট্রেটর", "ডিভাইস অ্যাডমিন অ্যাপ"};
+                for (String title : listTitles) {
+                    if (!root.findAccessibilityNodeInfosByText(title).isEmpty()) return;
+                }
+
                 // The Detail/Activation screen ALWAYS has a "Cancel" button and an "Action" button.
-                // The List screen NEVER has a "Cancel" button.
                 boolean hasCancel = !root.findAccessibilityNodeInfosByText("Cancel").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("বাতিল").isEmpty();
                 
