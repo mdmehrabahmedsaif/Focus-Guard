@@ -92,10 +92,8 @@ public class BlockerService extends AccessibilityService {
 
         // App Blocking logic (WhatsApp, YouTube, Instagram)
         if (PKG_WHATSAPP.equals(pkgName)) {
-            if (prefManager.isWhatsAppBlocked()
-                    && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                     || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
-                handleWhatsApp();
+            if (prefManager.isWhatsAppBlocked()) {
+                handleWhatsApp(event, eventType);
             }
         } else if (PKG_YOUTUBE.equals(pkgName)) {
             if (prefManager.isYouTubeBlocked()) {
@@ -345,31 +343,64 @@ public class BlockerService extends AccessibilityService {
     // WHATSAPP UPDATES BLOCKING
     // =========================================================================
 
-    private void handleWhatsApp() {
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
-        try {
-            if (isWhatsAppUpdatesVisible(root)) {
-                performGlobalAction(GLOBAL_ACTION_BACK);
+    /**
+     * WHATSAPP BLOCKING (Updates, Status, Channels)
+     */
+    private void handleWhatsApp(AccessibilityEvent event, int eventType) {
+        // 1. CLICK DETECTION (Instant kick-out on tab tap)
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            String text = getEventText(event).toLowerCase();
+            if (isWhatsAppRestrictedKeyword(text)) {
+                triggerKickOut();
+                return;
             }
-        } finally {
-            root.recycle();
+        }
+
+        // 2. WINDOW SCAN (Detection on screen change or content update)
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            try {
+                if (isWhatsAppRestrictedVisible(root)) {
+                    triggerKickOut();
+                }
+            } finally {
+                root.recycle();
+            }
         }
     }
 
-    private boolean isWhatsAppUpdatesVisible(AccessibilityNodeInfo root) {
-        String[] tabLabels = {"Updates", "Status", "Channels", "আপডেট", "স্ট্যাটাস", "চ্যানেল"};
-        for (String label : tabLabels) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(label);
-            if (nodes == null) continue;
-            for (AccessibilityNodeInfo node : nodes) {
-                if (node == null) continue;
-                boolean active = node.isSelected() || node.isFocused() || isAncestorSelected(node);
-                node.recycle();
-                if (active) return true;
+    private boolean isWhatsAppRestrictedVisible(AccessibilityNodeInfo root) {
+        String[] keywords = {"Updates", "Status", "Channels", "আপডেট", "স্ট্যাটাস", "চ্যানেল"};
+        for (String kw : keywords) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
+            if (nodes != null) {
+                for (AccessibilityNodeInfo node : nodes) {
+                    if (node == null) continue;
+                    // Check if it's the ACTIVE tab
+                    boolean active = node.isSelected() || node.isFocused() || isAncestorSelected(node);
+                    
+                    // Check for "Selected [Keyword]" in content description
+                    CharSequence cd = node.getContentDescription();
+                    if (cd != null && cd.toString().toLowerCase().contains("selected")) {
+                        active = true;
+                    }
+                    
+                    node.recycle();
+                    if (active) return true;
+                }
             }
         }
         return false;
+    }
+
+    private boolean isWhatsAppRestrictedKeyword(String text) {
+        if (text == null) return false;
+        String t = text.toLowerCase();
+        return t.contains("updates") || t.contains("status") || t.contains("channels") ||
+               t.contains("আপডেট") || t.contains("স্ট্যাটাস") || t.contains("চ্যানেল");
     }
 
     private boolean isAncestorSelected(AccessibilityNodeInfo node) {
