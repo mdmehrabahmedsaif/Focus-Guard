@@ -104,37 +104,89 @@ public class BlockerService extends AccessibilityService {
 
     // =========================================================================
     // SETTINGS PROTECTION (Surgical — FocusGuard entries only)
+    // TWO INDEPENDENT HANDLERS: Accessibility ≠ Device Admin
     // =========================================================================
 
     private void handleSettingsEvent(AccessibilityEvent event, int eventType) {
-        // CRITICAL FIX: Only check event TEXT on TYPE_VIEW_CLICKED
-        // WHY: The accessibility settings LIST page always shows "FocusGuard" as an item.
-        // If we check text on TYPE_WINDOW_CONTENT_CHANGED, we kick the user out the
-        // moment the list page loads — blocking the whole accessibility settings page.
-        // We ONLY want to react when the user actually TAPS on the FocusGuard item.
+        // Only act on: click (user tapped), or window change (new screen opened)
+        if (eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
+            eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            return;
+        }
 
+        // --- ACCESSIBILITY PROTECTION (independent) ---
+        // Only triggers in accessibility settings screens
+        if (prefManager.isAccessibilityProtected()) {
+            handleAccessibilityProtection(event, eventType);
+        }
+
+        // --- DEVICE ADMIN PROTECTION (independent) ---
+        // Only triggers in device admin screens
+        if (prefManager.isDeviceAdminProtected()) {
+            handleAdminProtection(event, eventType);
+        }
+    }
+
+    /**
+     * ACCESSIBILITY PROTECTION
+     * Triggers ONLY when user taps FocusGuard in Accessibility Settings.
+     * Does NOT interfere with Device Admin screens.
+     */
+    private void handleAccessibilityProtection(AccessibilityEvent event, int eventType) {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            // User tapped something — check if it's our item
-            String eventText = getEventText(event).toLowerCase();
-            if (eventText.contains("focusguard") || eventText.contains("blocker")) {
+            // Fast path: user tapped — check if it's our service item
+            String tapped = getEventText(event).toLowerCase();
+            if (tapped.contains("focusguard") || tapped.contains("blocker")) {
                 triggerKickOut();
                 return;
             }
         }
 
-        // For window transitions (new screen opened), use class-name detection
-        // This catches the detail/toggle/confirmation screen after the tap
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // A new screen opened — check if it's the accessibility detail/toggle screen
             CharSequence cls = event.getClassName();
-            if (cls != null) {
-                String clsName = cls.toString().toLowerCase();
-                if (clsName.contains("deviceadmin") ||
-                    clsName.contains("toggleaccessibilityservice") ||
-                    clsName.contains("accessibilitydetails") ||
-                    clsName.contains("accessibilityservicewarning")) {
-                    // A specific FocusGuard management screen opened — scan and kick
-                    checkWindowForFocusGuard();
-                }
+            if (cls == null) return;
+            String clsName = cls.toString().toLowerCase();
+
+            boolean isAccessibilityScreen =
+                clsName.contains("toggleaccessibilityservice") ||
+                clsName.contains("accessibilitydetails") ||
+                clsName.contains("accessibilityservicewarning") ||
+                clsName.contains("accessibilityindividualsettings");
+
+            if (isAccessibilityScreen) {
+                checkWindowForFocusGuard();
+            }
+        }
+    }
+
+    /**
+     * DEVICE ADMIN PROTECTION
+     * Triggers ONLY when user taps FocusGuard in Device Admin settings.
+     * Does NOT interfere with Accessibility screens.
+     */
+    private void handleAdminProtection(AccessibilityEvent event, int eventType) {
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            // Fast path: user tapped — check if it's our admin item
+            String tapped = getEventText(event).toLowerCase();
+            if (tapped.contains("focusguard") || tapped.contains("blocker")) {
+                triggerKickOut();
+                return;
+            }
+        }
+
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // A new screen opened — check if it's the device admin confirmation screen
+            CharSequence cls = event.getClassName();
+            if (cls == null) return;
+            String clsName = cls.toString().toLowerCase();
+
+            boolean isAdminScreen =
+                clsName.contains("deviceadminadd") ||
+                clsName.contains("deviceadmin") && !clsName.contains("accessibility");
+
+            if (isAdminScreen) {
+                checkWindowForFocusGuard();
             }
         }
     }

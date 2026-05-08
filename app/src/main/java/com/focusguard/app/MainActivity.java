@@ -29,7 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvAdminStatus, tvAccessibilityStatus;
     private View btnEnableAdmin, btnDisableAdmin, btnEnableAccessibility, btnDisableAccessibility;
     private View btnSavePassword;
-    private SwitchCompat swWhatsApp, swYouTube, swInstagram;
+    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAcc, swBlockAdmin;
     private EditText etPassword;
 
     private static final int REQ_ADMIN = 101;
@@ -69,6 +69,8 @@ public class MainActivity extends AppCompatActivity {
         swWhatsApp  = findViewById(R.id.rowWhatsApp).findViewById(R.id.itemSwitch);
         swYouTube   = findViewById(R.id.rowYouTube).findViewById(R.id.itemSwitch);
         swInstagram = findViewById(R.id.rowInstagram).findViewById(R.id.itemSwitch);
+        swBlockAcc   = findViewById(R.id.switchBlockAccessibility);
+        swBlockAdmin = findViewById(R.id.switchBlockDeviceAdmin);
 
         if (etPassword != null) {
             etPassword.setText(pref.getEmergencyPassword());
@@ -128,6 +130,12 @@ public class MainActivity extends AppCompatActivity {
             pref.setInstagramBlocked(checked);
             pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || checked);
         });
+
+        // Independent protection locks
+        swBlockAcc.setOnCheckedChangeListener((b, checked) ->
+            pref.setAccessibilityProtected(checked));
+        swBlockAdmin.setOnCheckedChangeListener((b, checked) ->
+            pref.setDeviceAdminProtected(checked));
 
         // --- Save Password ---
         btnSavePassword.setOnClickListener(v -> {
@@ -219,10 +227,14 @@ public class MainActivity extends AppCompatActivity {
             btnDisableAdmin.setVisibility(View.GONE);
         }
 
-        // Switches
+        // App blocking switches
         swWhatsApp.setChecked(pref.isWhatsAppBlocked());
         swYouTube.setChecked(pref.isYouTubeBlocked());
         swInstagram.setChecked(pref.isInstagramBlocked());
+
+        // Protection lock switches (independent)
+        swBlockAcc.setChecked(pref.isAccessibilityProtected());
+        swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
     }
 
     @Override protected void onResume()  { super.onResume();  syncUIWithState(); }
