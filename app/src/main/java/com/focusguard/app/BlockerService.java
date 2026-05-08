@@ -139,10 +139,8 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // --- SCREEN DETECTION (Instant content scanning) ---
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
-            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            
+        // --- SCREEN DETECTION (Window change only) ---
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
@@ -206,10 +204,8 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // --- SCREEN DETECTION (Window change or content update) ---
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
-            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            
+        // --- SCREEN DETECTION (Window change only) ---
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
@@ -219,13 +215,14 @@ public class BlockerService extends AccessibilityService {
                     for (AccessibilityNodeInfo n : hits) n.recycle();
                     
                     // Check for Admin action keywords in English and Bengali
-                    boolean isAdminAction = 
+                    // Detail screens usually have specific action labels on buttons
+                    boolean isAdminDetail = 
                         !root.findAccessibilityNodeInfosByText("Deactivate").isEmpty() ||
                         !root.findAccessibilityNodeInfosByText("Activate").isEmpty() ||
                         !root.findAccessibilityNodeInfosByText("ডিঅ্যাক্টিভেট").isEmpty() ||
                         !root.findAccessibilityNodeInfosByText("অ্যাক্টিভেট").isEmpty();
 
-                    if (isAdminAction) {
+                    if (isAdminDetail) {
                         triggerKickOut();
                     }
                 }
@@ -240,38 +237,43 @@ public class BlockerService extends AccessibilityService {
      * Allows viewing App Info, but blocks clicking the "Uninstall" button.
      */
     private void handleUninstallProtection(AccessibilityEvent event, int eventType) {
-        // We check on click and on window changes
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            try {
-                // 1. Check if we are in FocusGuard's App Info page
-                List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
-                if (hits == null || hits.isEmpty()) return;
-                for (AccessibilityNodeInfo n : hits) n.recycle();
-
-                // 2. If it's a click, check if the user clicked "Uninstall"
-                if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-                    AccessibilityNodeInfo source = event.getSource();
-                    if (source != null) {
-                        String txt = getEventText(event).toLowerCase();
-                        if (txt.contains("uninstall") || txt.contains("আনইনস্টল")) {
+        // 1. Detect CLICK on Uninstall button
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                String txt = getEventText(event).toLowerCase();
+                if (txt.contains("uninstall") || txt.contains("আনইনস্টল")) {
+                    // Check if the current window is indeed FocusGuard's page
+                    AccessibilityNodeInfo root = getRootInActiveWindow();
+                    if (root != null) {
+                        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                        if (hits != null && !hits.isEmpty()) {
+                            for (AccessibilityNodeInfo n : hits) n.recycle();
+                            root.recycle();
                             source.recycle();
                             triggerKickOut();
                             return;
                         }
-                        source.recycle();
+                        root.recycle();
                     }
                 }
+                source.recycle();
+            }
+        }
 
-                // 3. Fallback: if an uninstall confirmation dialog opens
+        // 2. Detect Uninstall Confirmation Dialog (Window change only)
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            try {
                 boolean isUninstallDialog = !root.findAccessibilityNodeInfosByText("Do you want to uninstall").isEmpty() ||
                                             !root.findAccessibilityNodeInfosByText("আপনি কি আনইনস্টল").isEmpty();
                 if (isUninstallDialog) {
-                    triggerKickOut();
+                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                    if (hits != null && !hits.isEmpty()) {
+                        for (AccessibilityNodeInfo n : hits) n.recycle();
+                        triggerKickOut();
+                    }
                 }
             } finally {
                 root.recycle();
