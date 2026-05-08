@@ -158,15 +158,28 @@ public class BlockerService extends AccessibilityService {
         CharSequence eventPkg = event.getPackageName();
         String pkgName = (eventPkg != null) ? eventPkg.toString().toLowerCase() : "";
 
-        // ── A: CLICK-BASED PROTECTION (Strict & Silent) ─────────────────────
-        // Trigger if we tap FocusGuard inside Settings
+        // ── A: SURGICAL CLICK PROTECTION ────────────────────────────────────
         if (type == AccessibilityEvent.TYPE_VIEW_CLICKED || 
             type == AccessibilityEvent.TYPE_VIEW_SELECTED ||
             type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
-            if (pkgName.contains("settings") && eventTextContainsFocusGuardKeyword(event)) {
-                kickOut();
-                return;
+            if (pkgName.contains("settings")) {
+                String eventText = getEventText(event).toLowerCase();
+
+                // 1. BLOCK: Accessibility Detail Page Click
+                if (eventText.contains("focusguard blocker")) {
+                    kickOut();
+                    return;
+                }
+
+                // 2. BLOCK: Uninstall button ONLY for FocusGuard
+                if (eventText.contains("uninstall") || eventText.contains("আনইনস্টল")) {
+                    // Check if we are actually looking at FocusGuard App Info
+                    if (rootContainsAppTitle("FocusGuard")) {
+                        kickOut();
+                        return;
+                    }
+                }
             }
         }
 
@@ -189,6 +202,32 @@ public class BlockerService extends AccessibilityService {
             if (rootIsAdminDeactivationPage()) {
                 kickOut();
             }
+        }
+    }
+
+    private String getEventText(AccessibilityEvent event) {
+        StringBuilder sb = new StringBuilder();
+        List<CharSequence> texts = event.getText();
+        if (texts != null) {
+            for (CharSequence t : texts) if (t != null) sb.append(t).append(" ");
+        }
+        CharSequence cd = event.getContentDescription();
+        if (cd != null) sb.append(cd);
+        return sb.toString();
+    }
+
+    private boolean rootContainsAppTitle(String title) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        try {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(title);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo n : hits) if (n != null) n.recycle();
+                return true;
+            }
+            return false;
+        } finally {
+            root.recycle();
         }
     }
 
