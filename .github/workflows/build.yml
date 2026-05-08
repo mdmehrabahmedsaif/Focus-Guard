@@ -50,12 +50,12 @@ jobs:
           ## FocusGuard Release ${{ steps.version.outputs.VERSION }}
           **Build Date:** ${{ steps.version.outputs.DATE }}
 
-          ### What's included:
-          - ✅ WhatsApp Updates/Channels tab blocking
-          - ✅ YouTube Shorts blocking
-          - ✅ Instagram Reels blocking
-          - ✅ Device Admin uninstall protection
-          - ✅ Faster 500ms block response time
+          ### What's included in v1.5 (Futuristic Update):
+          - 💎 **Futuristic Minimalist UI:** Complete redesign with Midnight Dark theme and Neon accents.
+          - ⏳ **Circular Progress Tracker:** Glowing neon radar for real-time focus session tracking.
+          - 🛡️ **System Core Protection:** Hardened Device Admin and Accessibility protection.
+          - 🚀 **Performance:** Optimized sub-0.1s block response for WhatsApp, YouTube, and Instagram.
+          - ✅ **Bug Fixes:** Resolved resource linking and startup crash issues.
 
           ### How to install:
           1. Download `app-debug.apk` below
