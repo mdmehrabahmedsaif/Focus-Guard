@@ -187,15 +187,19 @@ public class BlockerService extends AccessibilityService {
      * Triggers ONLY when user taps FocusGuard in Device Admin settings.
      * Does NOT interfere with Accessibility screens.
      */
+    /**
+     * DEVICE ADMIN PROTECTION (Redesigned)
+     * Stage 1: Block clicking FocusGuard in the Admin List.
+     * Stage 2: Block the "Activate/Deactivate" confirmation screen.
+     */
     private void handleAdminProtection(AccessibilityEvent event, int eventType) {
-        // --- CLICK DETECTION (Instant) ---
+        // 1. CLICK DETECTION (List Page)
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
-                // Search the clicked item's subtree for "FocusGuard"
-                List<AccessibilityNodeInfo> hits = source.findAccessibilityNodeInfosByText("FocusGuard");
-                if (hits != null && !hits.isEmpty()) {
-                    for (AccessibilityNodeInfo n : hits) n.recycle();
+                // We check if the clicked node (or its immediate children) contains "FocusGuard"
+                // This is surgical and only blocks the specific item click.
+                if (isFocusGuardNode(source)) {
                     source.recycle();
                     triggerKickOut();
                     return;
@@ -204,30 +208,29 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // --- SCREEN DETECTION (Window change only) ---
+        // 2. SCREEN DETECTION (Confirmation Detail Page)
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // To avoid blocking the LIST page, we look for a "Cancel" button
-                // Confirmation/Detail pages have "Cancel", but the list page doesn't.
+                // The Detail/Activation screen ALWAYS has a "Cancel" button and an "Action" button.
+                // The List screen NEVER has a "Cancel" button.
                 boolean hasCancel = !root.findAccessibilityNodeInfosByText("Cancel").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("বাতিল").isEmpty();
-
+                
                 if (hasCancel) {
-                    // It's a confirmation screen, now check if it's about FocusGuard
+                    // It's a detail/confirmation screen. Now check if it's OUR app.
                     List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
                     if (hits != null && !hits.isEmpty()) {
                         for (AccessibilityNodeInfo n : hits) n.recycle();
                         
-                        // Look for action buttons
-                        boolean isActionPage = 
-                            !root.findAccessibilityNodeInfosByText("Deactivate").isEmpty() ||
-                            !root.findAccessibilityNodeInfosByText("Activate").isEmpty() ||
-                            !root.findAccessibilityNodeInfosByText("ডিঅ্যাক্টিভেট").isEmpty() ||
-                            !root.findAccessibilityNodeInfosByText("অ্যাক্টিভেট").isEmpty();
-
-                        if (isActionPage) {
+                        // Final check: Is there an Activate/Deactivate button?
+                        boolean hasAction = !root.findAccessibilityNodeInfosByText("Activate").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("Deactivate").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("অ্যাক্টিভেট").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("ডিঅ্যাক্টিভেট").isEmpty();
+                        
+                        if (hasAction) {
                             triggerKickOut();
                         }
                     }
@@ -236,6 +239,29 @@ public class BlockerService extends AccessibilityService {
                 root.recycle();
             }
         }
+    }
+
+    /** Helper to check if a node or its children mention FocusGuard */
+    private boolean isFocusGuardNode(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        
+        // Check the node itself
+        CharSequence txt = node.getText();
+        if (txt != null && txt.toString().contains("FocusGuard")) return true;
+        
+        // Check direct children (for list items)
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                CharSequence ctxt = child.getText();
+                if (ctxt != null && ctxt.toString().contains("FocusGuard")) {
+                    child.recycle();
+                    return true;
+                }
+                child.recycle();
+            }
+        }
+        return false;
     }
 
     /**
