@@ -340,86 +340,142 @@ public class BlockerService extends AccessibilityService {
     }
 
     // =========================================================================
-    // WHATSAPP UPDATES BLOCKING
+    // WHATSAPP CHANNELS BLOCKING (Redesigned)
     // =========================================================================
 
-    /**
-     * WHATSAPP BLOCKING (Updates, Status, Channels)
-     */
     private void handleWhatsApp(AccessibilityEvent event, int eventType) {
-        // 1. CLICK DETECTION
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            String text = getEventText(event).toLowerCase();
-            if (isWhatsAppRestrictedKeyword(text)) {
-                triggerSequentialKickOut();
-                return;
-            }
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            return;
         }
 
-        // 2. WINDOW SCAN
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            try {
-                if (isWhatsAppRestrictedVisible(root)) {
-                    triggerSequentialKickOut();
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+
+        try {
+            if (isInsideWhatsAppChannels(root)) {
+                // Instantly redirect to the Chats tab to keep the user inside WhatsApp
+                boolean switched = switchToWhatsAppChats(root);
+                if (!switched) {
+                    // Fallback: If Chats tab is not visible (e.g., deep in a channel view), go Back
+                    performGlobalAction(GLOBAL_ACTION_BACK);
                 }
-            } finally {
-                root.recycle();
             }
+        } finally {
+            root.recycle();
         }
     }
 
-    /** Sequential kick-out: Back to app home, then exit to device home */
-    private void triggerSequentialKickOut() {
-        performGlobalAction(GLOBAL_ACTION_BACK);
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            performGlobalAction(GLOBAL_ACTION_HOME);
-        }, 50);
-    }
+    private boolean isInsideWhatsAppChannels(AccessibilityNodeInfo root) {
+        // STRICT EXACT MATCHING ONLY.
+        // We do NOT use .contains() on generic text to prevent blocking normal chat messages.
 
-    private boolean isWhatsAppRestrictedVisible(AccessibilityNodeInfo root) {
-        // 1. Check Tabs (Updates, Status, Channels)
-        String[] keywords = {"Updates", "Status", "Channels", "আপডেট", "স্ট্যাটাস", "চ্যানেল"};
-        for (String kw : keywords) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(kw);
-            if (nodes != null) {
-                for (AccessibilityNodeInfo node : nodes) {
-                    if (node == null) continue;
-                    // Check if it's the ACTIVE tab
-                    boolean active = node.isSelected() || node.isFocused() || isAncestorSelected(node);
-                    
-                    // Check for "Selected [Keyword]" in content description
-                    CharSequence cd = node.getContentDescription();
-                    if (cd != null && cd.toString().toLowerCase().contains("selected")) {
-                        active = true;
-                    }
-                    
-                    node.recycle();
-                    if (active) return true;
-                }
-            }
-        }
-
-        // 2. Check for being INSIDE a Channel list or search
-        String[] channelSpecifics = {"Find channels", "Channels to follow", "Browse channels", "চ্যানেল খুঁজুন", "Follow", "Following"};
-        for (String spec : channelSpecifics) {
-            if (!root.findAccessibilityNodeInfosByText(spec).isEmpty()) {
-                return true;
-            }
-        }
+        // 1. Channel-specific headers and UI elements (Exact Match, No EditTexts)
+        String[] channelIndicators = {
+            "Channel info", "চ্যানেলের তথ্য", 
+            "Find channels", "চ্যানেল খুঁজুন",
+            "Channels to follow", "View channel", "চ্যানেল দেখুন",
+            "Public channel", "পাবলিক চ্যানেল"
+        };
         
+        for (String indicator : channelIndicators) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(indicator);
+            for (AccessibilityNodeInfo node : nodes) {
+                if (node == null) continue;
+                CharSequence text = node.getText();
+                if (text != null && text.toString().equalsIgnoreCase(indicator)) {
+                    // Exclude chat input boxes to allow typing these words
+                    if (!"android.widget.EditText".equals(node.getClassName())) {
+                        node.recycle();
+                        return true;
+                    }
+                }
+                node.recycle();
+            }
+        }
+
+        // 2. Follow / Unfollow buttons (Exact Match, Must be Clickable or Button)
+        String[] actionBtns = {"Follow", "ফলো করুন", "Unfollow", "আনফলো করুন"};
+        for (String btn : actionBtns) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(btn);
+            for (AccessibilityNodeInfo node : nodes) {
+                if (node == null) continue;
+                CharSequence text = node.getText();
+                if (text != null && text.toString().equalsIgnoreCase(btn)) {
+                    if (node.isClickable() || "android.widget.Button".equals(node.getClassName())) {
+                        node.recycle();
+                        return true;
+                    }
+                }
+                node.recycle();
+            }
+        }
+
+        // 3. Block the Updates/Channels Tab ONLY IF it is currently selected.
+        String[] tabNames = {"Updates", "আপডেট", "Channels", "চ্যানেল"};
+        for (String tabName : tabNames) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(tabName);
+            for (AccessibilityNodeInfo node : nodes) {
+                if (node == null) continue;
+                CharSequence text = node.getText();
+                CharSequence desc = node.getContentDescription();
+                
+                boolean exactMatchText = text != null && text.toString().equalsIgnoreCase(tabName);
+                boolean matchDesc = desc != null && desc.toString().toLowerCase().contains(tabName.toLowerCase());
+                
+                if (exactMatchText || matchDesc) {
+                    // Check if this specific tab is currently active/selected
+                    if (node.isSelected() || isAncestorSelected(node) || (desc != null && desc.toString().toLowerCase().contains("selected"))) {
+                        node.recycle();
+                        return true;
+                    }
+                }
+                node.recycle();
+            }
+        }
+
         return false;
     }
 
-    private boolean isWhatsAppRestrictedKeyword(String text) {
-        if (text == null) return false;
-        String t = text.toLowerCase();
-        return t.contains("updates") || t.contains("status") || t.contains("channels") ||
-               t.contains("follow") || t.contains("following") ||
-               t.contains("আপডেট") || t.contains("স্ট্যাটাস") || t.contains("চ্যানেল");
+    private boolean switchToWhatsAppChats(AccessibilityNodeInfo root) {
+        String[] chatTabs = {"Chats", "চ্যাট"};
+        for (String tab : chatTabs) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(tab);
+            for (AccessibilityNodeInfo node : nodes) {
+                if (node == null) continue;
+                CharSequence text = node.getText();
+                CharSequence desc = node.getContentDescription();
+                
+                boolean exactMatch = false;
+                if (text != null && text.toString().equalsIgnoreCase(tab)) exactMatch = true;
+                if (desc != null && desc.toString().toLowerCase().contains(tab.toLowerCase())) exactMatch = true;
+                
+                if (exactMatch) {
+                    if (clickNodeOrParent(node)) {
+                        node.recycle();
+                        return true;
+                    }
+                }
+                node.recycle();
+            }
+        }
+        return false;
+    }
+
+    private boolean clickNodeOrParent(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        if (node.isClickable()) {
+            node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            return true;
+        }
+        AccessibilityNodeInfo parent = node.getParent();
+        if (parent != null) {
+            boolean clicked = clickNodeOrParent(parent);
+            parent.recycle();
+            return clicked;
+        }
+        return false;
     }
 
     private boolean isAncestorSelected(AccessibilityNodeInfo node) {
