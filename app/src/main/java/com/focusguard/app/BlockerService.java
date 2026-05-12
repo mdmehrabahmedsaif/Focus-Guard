@@ -383,13 +383,16 @@ public class BlockerService extends AccessibilityService {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(indicator);
             for (AccessibilityNodeInfo node : nodes) {
                 if (node == null) continue;
+                
+                if (isEditableNode(node)) {
+                    node.recycle();
+                    continue;
+                }
+
                 CharSequence text = node.getText();
                 if (text != null && text.toString().equalsIgnoreCase(indicator)) {
-                    // Exclude chat input boxes to allow typing these words
-                    if (!"android.widget.EditText".equals(node.getClassName())) {
-                        node.recycle();
-                        return true;
-                    }
+                    node.recycle();
+                    return true;
                 }
                 node.recycle();
             }
@@ -401,6 +404,12 @@ public class BlockerService extends AccessibilityService {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(btn);
             for (AccessibilityNodeInfo node : nodes) {
                 if (node == null) continue;
+                
+                if (isEditableNode(node)) {
+                    node.recycle();
+                    continue;
+                }
+
                 CharSequence text = node.getText();
                 if (text != null && text.toString().equalsIgnoreCase(btn)) {
                     if (node.isClickable() || "android.widget.Button".equals(node.getClassName())) {
@@ -418,6 +427,12 @@ public class BlockerService extends AccessibilityService {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(tabName);
             for (AccessibilityNodeInfo node : nodes) {
                 if (node == null) continue;
+                
+                if (isEditableNode(node) || isInsideChatList(node)) {
+                    node.recycle();
+                    continue;
+                }
+
                 CharSequence text = node.getText();
                 CharSequence desc = node.getContentDescription();
                 
@@ -444,6 +459,12 @@ public class BlockerService extends AccessibilityService {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(tab);
             for (AccessibilityNodeInfo node : nodes) {
                 if (node == null) continue;
+                
+                if (isEditableNode(node) || isInsideChatList(node)) {
+                    node.recycle();
+                    continue;
+                }
+
                 CharSequence text = node.getText();
                 CharSequence desc = node.getContentDescription();
                 
@@ -459,6 +480,32 @@ public class BlockerService extends AccessibilityService {
                 }
                 node.recycle();
             }
+        }
+        return false;
+    }
+
+    private boolean isEditableNode(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        if (node.isEditable()) return true;
+        CharSequence className = node.getClassName();
+        if (className != null && className.toString().contains("EditText")) return true;
+        return false;
+    }
+
+    private boolean isInsideChatList(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        AccessibilityNodeInfo current = node.getParent();
+        int depth = 0;
+        while (current != null && depth < 8) {
+            CharSequence cls = current.getClassName();
+            if (cls != null && (cls.toString().contains("RecyclerView") || cls.toString().contains("ListView"))) {
+                current.recycle();
+                return true;
+            }
+            AccessibilityNodeInfo parent = current.getParent();
+            current.recycle();
+            current = parent;
+            depth++;
         }
         return false;
     }
