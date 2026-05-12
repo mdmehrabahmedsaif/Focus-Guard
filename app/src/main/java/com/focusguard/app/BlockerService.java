@@ -10,12 +10,12 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.List;
 
 /**
- * FocusGuard Blocker Service — v1.6.1 Bug-Fixed
+ * FocusGuard Blocker Service — v1.6.2
  *
  * BUG FIXES in this version:
  *   - FIX #1: OEM compatibility — Samsung/OPPO/Xiaomi settings package detection
  *   - FIX #2: Instagram reels detection — removed unreliable content description check
- *   - FIX #3: Removed unused ComponentName import
+ *   - FIX #3: WhatsApp Channels — Redesigned to use Chat redirection and strict UI matching
  */
 public class BlockerService extends AccessibilityService {
 
