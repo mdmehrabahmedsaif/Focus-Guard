@@ -50,12 +50,11 @@ jobs:
           ## FocusGuard Release ${{ steps.version.outputs.VERSION }}
           **Build Date:** ${{ steps.version.outputs.DATE }}
 
-          ### What's included in v1.5 (Futuristic Update):
-          - 💎 **Futuristic Minimalist UI:** Complete redesign with Midnight Dark theme and Neon accents.
-          - ⏳ **Circular Progress Tracker:** Glowing neon radar for real-time focus session tracking.
+          ### What's included in v1.6.2 (WhatsApp Stability):
+          - 🛡️ **WhatsApp Fix:** Resolved issue where keywords like "channel/update" prevented text selection in chats.
           - 🛡️ **System Core Protection:** Hardened Device Admin and Accessibility protection.
           - 🚀 **Performance:** Optimized sub-0.1s block response for WhatsApp, YouTube, and Instagram.
-          - ✅ **Bug Fixes:** Resolved resource linking and startup crash issues.
+          - ✅ **Bug Fixes:** Improved node matching logic for better compatibility.
 
           ### How to install:
           1. Download `app-debug.apk` below
