@@ -89,7 +89,7 @@ public class MainActivity extends AppCompatActivity {
         // --- Accessibility Service ---
         btnEnableAccessibility.setOnClickListener(v -> {
             startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-            Toast.makeText(this, "Find and enable FocusGuard service", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Find and enable Focus Guard service", Toast.LENGTH_LONG).show();
         });
 
         btnDisableAccessibility.setOnClickListener(v -> promptPassword(() -> {
@@ -169,7 +169,7 @@ public class MainActivity extends AppCompatActivity {
 
         new android.app.AlertDialog.Builder(this)
             .setTitle("🛡️ Authentication Required")
-            .setMessage("Enter your FocusGuard password to continue.")
+            .setMessage("Enter your Focus Guard password to continue.")
             .setView(input)
             .setPositiveButton("VERIFY", (dialog, which) -> {
                 String entered = input.getText().toString();

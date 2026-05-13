@@ -24,7 +24,7 @@ public class AdminReceiver extends DeviceAdminReceiver {
      */
     @Override
     public CharSequence onDisableRequested(Context context, Intent intent) {
-        return "⚠️ WARNING: Disabling Device Admin will remove FocusGuard protection. " +
+        return "⚠️ WARNING: Disabling Device Admin will remove Focus Guard protection. " +
                "Your focus session will be compromised.";
     }
 

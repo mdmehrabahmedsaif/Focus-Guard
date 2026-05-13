@@ -29,7 +29,7 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_INSTAGRAM = "com.instagram.android";
 
     private static final String OUR_PACKAGE   = "com.focusguard.app";
-    private static final String SERVICE_LABEL = "FocusGuard";
+    private static final String SERVICE_LABEL = "Focus Guard";
 
     // Pre-allocated Handler + Runnable for zero-GC hot path
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -147,6 +147,7 @@ public class BlockerService extends AccessibilityService {
                 // Ensure we are in an Accessibility-related screen
                 boolean isAccessibilityWindow = !root.findAccessibilityNodeInfosByText("Accessibility").isEmpty() ||
                                                !root.findAccessibilityNodeInfosByText("এক্সেসিবিলিটি").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Use Focus Guard").isEmpty() ||
                                                !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty();
                 
                 if (isAccessibilityWindow && isFocusGuardDetailScreen(root)) {
@@ -170,7 +171,10 @@ public class BlockerService extends AccessibilityService {
         }
 
         // 2. Window must contain our service name
-        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Focus Guard");
+        if (hits == null || hits.isEmpty()) {
+            hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+        }
         if (hits == null || hits.isEmpty()) return false;
         for (AccessibilityNodeInfo n : hits) n.recycle();
 
@@ -178,6 +182,7 @@ public class BlockerService extends AccessibilityService {
         // Only block if we see Accessibility-specific detail keywords.
         // This prevents Accessibility Lock from accidentally blocking Admin screens.
         boolean isAccessibilityContext = !root.findAccessibilityNodeInfosByText("Use service").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("Use Focus Guard").isEmpty() ||
                                         !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty() ||
                                         !root.findAccessibilityNodeInfosByText("ব্যবহার").isEmpty() ||
                                         !root.findAccessibilityNodeInfosByText("Shortcut").isEmpty();
@@ -243,7 +248,10 @@ public class BlockerService extends AccessibilityService {
                                    !root.findAccessibilityNodeInfosByText("বাতিল").isEmpty();
                 
                 if (hasCancel) {
-                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Focus Guard");
+                    if (hits == null || hits.isEmpty()) {
+                        hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                    }
                     if (hits != null && !hits.isEmpty()) {
                         for (AccessibilityNodeInfo n : hits) n.recycle();
                         
@@ -266,14 +274,14 @@ public class BlockerService extends AccessibilityService {
         
         // Check the node itself
         CharSequence txt = node.getText();
-        if (txt != null && txt.toString().contains("FocusGuard")) return true;
+        if (txt != null && (txt.toString().contains("Focus Guard") || txt.toString().contains("FocusGuard"))) return true;
         
         // Check direct children (for list items)
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
                 CharSequence ctxt = child.getText();
-                if (ctxt != null && ctxt.toString().contains("FocusGuard")) {
+                if (ctxt != null && (ctxt.toString().contains("Focus Guard") || ctxt.toString().contains("FocusGuard"))) {
                     child.recycle();
                     return true;
                 }
@@ -297,7 +305,10 @@ public class BlockerService extends AccessibilityService {
                     // Check if the current window is indeed FocusGuard's page
                     AccessibilityNodeInfo root = getRootInActiveWindow();
                     if (root != null) {
-                        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Focus Guard");
+                        if (hits == null || hits.isEmpty()) {
+                            hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                        }
                         if (hits != null && !hits.isEmpty()) {
                             for (AccessibilityNodeInfo n : hits) n.recycle();
                             root.recycle();
@@ -320,7 +331,10 @@ public class BlockerService extends AccessibilityService {
                 boolean isUninstallDialog = !root.findAccessibilityNodeInfosByText("Do you want to uninstall").isEmpty() ||
                                             !root.findAccessibilityNodeInfosByText("আপনি কি আনইনস্টল").isEmpty();
                 if (isUninstallDialog) {
-                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Focus Guard");
+                    if (hits == null || hits.isEmpty()) {
+                        hits = root.findAccessibilityNodeInfosByText("FocusGuard");
+                    }
                     if (hits != null && !hits.isEmpty()) {
                         for (AccessibilityNodeInfo n : hits) n.recycle();
                         triggerKickOut();
