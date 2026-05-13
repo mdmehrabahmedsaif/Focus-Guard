@@ -376,7 +376,10 @@ public class BlockerService extends AccessibilityService {
             "Channel info", "চ্যানেলের তথ্য", 
             "Find channels", "চ্যানেল খুঁজুন",
             "Channels to follow", "View channel", "চ্যানেল দেখুন",
-            "Public channel", "পাবলিক চ্যানেল"
+            "Public channel", "পাবলিক চ্যানেল",
+            "Channel link", "চ্যানেলের লিঙ্ক",
+            "Channel settings", "চ্যানেল সেটিংস",
+            "Report channel", "চ্যানেল সম্পর্কে রিপোর্ট করুন"
         };
         
         for (String indicator : channelIndicators) {
@@ -390,7 +393,11 @@ public class BlockerService extends AccessibilityService {
                 }
 
                 CharSequence text = node.getText();
-                if (text != null && text.toString().equalsIgnoreCase(indicator)) {
+                CharSequence desc = node.getContentDescription();
+                boolean matchText = text != null && text.toString().equalsIgnoreCase(indicator);
+                boolean matchDesc = desc != null && desc.toString().equalsIgnoreCase(indicator);
+
+                if (matchText || matchDesc) {
                     node.recycle();
                     return true;
                 }
@@ -411,7 +418,11 @@ public class BlockerService extends AccessibilityService {
                 }
 
                 CharSequence text = node.getText();
-                if (text != null && text.toString().equalsIgnoreCase(btn)) {
+                CharSequence desc = node.getContentDescription();
+                boolean matchText = text != null && text.toString().equalsIgnoreCase(btn);
+                boolean matchDesc = desc != null && desc.toString().equalsIgnoreCase(btn);
+
+                if (matchText || matchDesc) {
                     if (node.isClickable() || "android.widget.Button".equals(node.getClassName())) {
                         node.recycle();
                         return true;
@@ -442,6 +453,44 @@ public class BlockerService extends AccessibilityService {
                 if (exactMatchText || matchDesc) {
                     // Check if this specific tab is currently active/selected
                     if (node.isSelected() || isAncestorSelected(node) || (desc != null && desc.toString().toLowerCase().contains("selected"))) {
+                        node.recycle();
+                        return true;
+                    }
+                }
+                node.recycle();
+            }
+        }
+
+        // 4. Channel Top Bar Subtitle & Verification
+        // Often visible inside a channel as "1.2M followers" or subtitle "Channel"
+        String[] channelSubtitles = {" followers", " ফলোয়ার", "Channel", "চ্যানেল"};
+        for (String subtitle : channelSubtitles) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(subtitle);
+            for (AccessibilityNodeInfo node : nodes) {
+                if (node == null) continue;
+                
+                if (isEditableNode(node) || isInsideChatList(node)) {
+                    node.recycle();
+                    continue;
+                }
+
+                CharSequence text = node.getText();
+                CharSequence desc = node.getContentDescription();
+                
+                boolean isFollowers = subtitle.startsWith(" ");
+                if (isFollowers) {
+                    // Partial match for " followers"
+                    boolean matchText = text != null && text.toString().toLowerCase().contains(subtitle.toLowerCase());
+                    boolean matchDesc = desc != null && desc.toString().toLowerCase().contains(subtitle.toLowerCase());
+                    if (matchText || matchDesc) {
+                        node.recycle();
+                        return true;
+                    }
+                } else {
+                    // Exact match for "Channel"
+                    boolean matchText = text != null && text.toString().equalsIgnoreCase(subtitle);
+                    boolean matchDesc = desc != null && desc.toString().equalsIgnoreCase(subtitle);
+                    if (matchText || matchDesc) {
                         node.recycle();
                         return true;
                     }
