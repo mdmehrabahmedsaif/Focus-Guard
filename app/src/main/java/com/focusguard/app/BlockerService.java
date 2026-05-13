@@ -354,152 +354,111 @@ public class BlockerService extends AccessibilityService {
         if (root == null) return;
 
         try {
-            if (isInsideWhatsAppChannels(root)) {
-                // Instantly redirect to the Chats tab to keep the user inside WhatsApp
+            int blockReason = getWhatsAppBlockReason(root);
+            if (blockReason == 1) {
+                // Tab Block - Try to switch to Chats. If it fails (e.g. Chats tab hidden), go Back.
                 boolean switched = switchToWhatsAppChats(root);
                 if (!switched) {
-                    // Fallback: If Chats tab is not visible (e.g., deep in a channel view), go Back
                     performGlobalAction(GLOBAL_ACTION_BACK);
                 }
+            } else if (blockReason == 2) {
+                // Channel Block - Instantly go Back (sub-0.1s latency)
+                performGlobalAction(GLOBAL_ACTION_BACK);
             }
         } finally {
             root.recycle();
         }
     }
 
-    private boolean isInsideWhatsAppChannels(AccessibilityNodeInfo root) {
-        // STRICT EXACT MATCHING ONLY.
-        // We do NOT use .contains() on generic text to prevent blocking normal chat messages.
+    private int getWhatsAppBlockReason(AccessibilityNodeInfo root) {
+        // 0 = Safe, 1 = Tab Block, 2 = Channel Block
 
-        // 1. Channel-specific headers and UI elements (Exact Match, No EditTexts)
-        String[] channelIndicators = {
-            "Channel info", "চ্যানেলের তথ্য", 
-            "Find channels", "চ্যানেল খুঁজুন",
-            "Channels to follow", "View channel", "চ্যানেল দেখুন",
-            "Public channel", "পাবলিক চ্যানেল",
-            "Channel link", "চ্যানেলের লিঙ্ক",
-            "Channel settings", "চ্যানেল সেটিংস",
-            "Report channel", "চ্যানেল সম্পর্কে রিপোর্ট করুন"
+        // Single pass keywords to minimize IPC calls (Massive Performance Boost)
+        String[] searchTerms = {
+            "channel", "চ্যানেল", 
+            "follow", "ফলো", 
+            "updates", "আপডেট"
         };
+
+        for (String term : searchTerms) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
+            int foundReason = 0;
+            for (AccessibilityNodeInfo node : nodes) {
+                if (node == null) continue;
+                if (foundReason == 0) {
+                    foundReason = evaluateWhatsAppNode(node);
+                }
+                node.recycle();
+            }
+            if (foundReason != 0) return foundReason;
+        }
         
-        for (String indicator : channelIndicators) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(indicator);
-            for (AccessibilityNodeInfo node : nodes) {
-                if (node == null) continue;
-                
-                if (isEditableNode(node)) {
-                    node.recycle();
-                    continue;
-                }
+        return 0; // Safe
+    }
 
-                CharSequence text = node.getText();
-                CharSequence desc = node.getContentDescription();
-                boolean matchText = text != null && text.toString().equalsIgnoreCase(indicator);
-                boolean matchDesc = desc != null && desc.toString().equalsIgnoreCase(indicator);
+    private int evaluateWhatsAppNode(AccessibilityNodeInfo node) {
+        if (isEditableNode(node)) return 0; // PREVIOUS FIX: Allow typing
+        
+        CharSequence t = node.getText();
+        CharSequence d = node.getContentDescription();
+        String text = t != null ? t.toString().trim().toLowerCase() : "";
+        String desc = d != null ? d.toString().trim().toLowerCase() : "";
 
-                if (matchText || matchDesc) {
-                    node.recycle();
-                    return true;
-                }
-                node.recycle();
+        if (text.isEmpty() && desc.isEmpty()) return 0;
+
+        // 1. Channel Indicators (Anywhere, very fast exact match)
+        String[] exactIndicators = {
+            "channel info", "চ্যানেলের তথ্য", 
+            "find channels", "চ্যানেল খুঁজুন",
+            "channels to follow", "view channel", "চ্যানেল দেখুন",
+            "public channel", "পাবলিক চ্যানেল",
+            "channel link", "চ্যানেলের লিঙ্ক",
+            "channel settings", "চ্যানেল সেটিংস",
+            "report channel", "চ্যানেল সম্পর্কে রিপোর্ট করুন"
+        };
+        for (String ind : exactIndicators) {
+            if (text.equals(ind) || desc.equals(ind)) {
+                return 2; // Channel Block
             }
         }
 
-        // 2. Follow / Unfollow buttons (Exact Match, Must be Clickable or Button)
-        String[] actionBtns = {"Follow", "ফলো করুন", "Unfollow", "আনফলো করুন"};
-        for (String btn : actionBtns) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(btn);
-            for (AccessibilityNodeInfo node : nodes) {
-                if (node == null) continue;
-                
-                if (isEditableNode(node)) {
-                    node.recycle();
-                    continue;
-                }
-
-                CharSequence text = node.getText();
-                CharSequence desc = node.getContentDescription();
-                boolean matchText = text != null && text.toString().equalsIgnoreCase(btn);
-                boolean matchDesc = desc != null && desc.toString().equalsIgnoreCase(btn);
-
-                if (matchText || matchDesc) {
-                    if (node.isClickable() || "android.widget.Button".equals(node.getClassName())) {
-                        node.recycle();
-                        return true;
-                    }
-                }
-                node.recycle();
+        // 2. Action Buttons (Anywhere)
+        boolean isActionBtn = text.equals("follow") || desc.equals("follow") ||
+                              text.equals("ফলো করুন") || desc.equals("ফলো করুন") ||
+                              text.equals("unfollow") || desc.equals("unfollow") ||
+                              text.equals("আনফলো করুন") || desc.equals("আনফলো করুন");
+        if (isActionBtn) {
+            if (node.isClickable() || (node.getClassName() != null && node.getClassName().toString().contains("Button"))) {
+                return 2; // Channel Block
             }
         }
 
-        // 3. Block the Updates/Channels Tab ONLY IF it is currently selected.
-        String[] tabNames = {"Updates", "আপডেট", "Channels", "চ্যানেল"};
-        for (String tabName : tabNames) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(tabName);
-            for (AccessibilityNodeInfo node : nodes) {
-                if (node == null) continue;
-                
-                if (isEditableNode(node) || isInsideChatList(node)) {
-                    node.recycle();
-                    continue;
-                }
+        // Expensive chat list check only if needed
+        boolean inChatList = isInsideChatList(node);
+        if (inChatList) return 0; // PREVIOUS FIX: Allow sent messages inside chat list
 
-                CharSequence text = node.getText();
-                CharSequence desc = node.getContentDescription();
-                
-                boolean exactMatchText = text != null && text.toString().equalsIgnoreCase(tabName);
-                boolean matchDesc = desc != null && desc.toString().toLowerCase().contains(tabName.toLowerCase());
-                
-                if (exactMatchText || matchDesc) {
-                    // Check if this specific tab is currently active/selected
-                    if (node.isSelected() || isAncestorSelected(node) || (desc != null && desc.toString().toLowerCase().contains("selected"))) {
-                        node.recycle();
-                        return true;
-                    }
-                }
-                node.recycle();
+        // 3. Tab Block (Updates/Channels Tab, NOT in chat list)
+        boolean isTab = text.equals("updates") || desc.contains("updates") ||
+                        text.equals("আপডেট") || desc.contains("আপডেট") ||
+                        text.equals("channels") || desc.contains("channels") ||
+                        text.equals("চ্যানেল") || desc.contains("চ্যানেল");
+        if (isTab) {
+            if (node.isSelected() || isAncestorSelected(node) || desc.contains("selected")) {
+                return 1; // Tab Block
             }
         }
 
-        // 4. Channel Top Bar Subtitle & Verification
-        // Often visible inside a channel as "1.2M followers" or subtitle "Channel"
-        String[] channelSubtitles = {" followers", " ফলোয়ার", "Channel", "চ্যানেল"};
-        for (String subtitle : channelSubtitles) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(subtitle);
-            for (AccessibilityNodeInfo node : nodes) {
-                if (node == null) continue;
-                
-                if (isEditableNode(node) || isInsideChatList(node)) {
-                    node.recycle();
-                    continue;
-                }
-
-                CharSequence text = node.getText();
-                CharSequence desc = node.getContentDescription();
-                
-                boolean isFollowers = subtitle.startsWith(" ");
-                if (isFollowers) {
-                    // Partial match for " followers"
-                    boolean matchText = text != null && text.toString().toLowerCase().contains(subtitle.toLowerCase());
-                    boolean matchDesc = desc != null && desc.toString().toLowerCase().contains(subtitle.toLowerCase());
-                    if (matchText || matchDesc) {
-                        node.recycle();
-                        return true;
-                    }
-                } else {
-                    // Exact match for "Channel"
-                    boolean matchText = text != null && text.toString().equalsIgnoreCase(subtitle);
-                    boolean matchDesc = desc != null && desc.toString().equalsIgnoreCase(subtitle);
-                    if (matchText || matchDesc) {
-                        node.recycle();
-                        return true;
-                    }
-                }
-                node.recycle();
-            }
+        // 4. Channel Subtitles (NOT in chat list)
+        if (text.contains(" followers") || desc.contains(" followers") ||
+            text.contains(" ফলোয়ার") || desc.contains(" ফলোয়ার")) {
+            return 2; // Channel Block
+        }
+        if (text.equals("channel") || desc.equals("channel") ||
+            text.equals("চ্যানেল") || desc.equals("চ্যানেল")) {
+            return 2; // Channel Block
         }
 
-        return false;
+        return 0; // Safe
     }
 
     private boolean switchToWhatsAppChats(AccessibilityNodeInfo root) {
