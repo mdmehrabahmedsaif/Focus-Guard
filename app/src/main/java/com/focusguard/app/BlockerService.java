@@ -125,11 +125,35 @@ public class BlockerService extends AccessibilityService {
         if (eventType != AccessibilityEvent.TYPE_VIEW_CLICKED && 
             eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
 
-        // --- CLICK DETECTION (Ultra-Fast) ---
+        // --- CLICK DETECTION (Ultra-Fast, Sub-0.1s) ---
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            // FAST PATH 1: Check event text directly (zero IPC, zero allocation)
+            List<CharSequence> eventTexts = event.getText();
+            if (eventTexts != null) {
+                for (CharSequence t : eventTexts) {
+                    if (t != null) {
+                        String s = t.toString();
+                        if (s.contains("Focus Guard") || s.contains("FocusGuard")) {
+                            triggerKickOut();
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // FAST PATH 2: Check event content description
+            CharSequence evtDesc = event.getContentDescription();
+            if (evtDesc != null) {
+                String d = evtDesc.toString();
+                if (d.contains("Focus Guard") || d.contains("FocusGuard")) {
+                    triggerKickOut();
+                    return;
+                }
+            }
+
+            // FAST PATH 3: Check source node (with deep child traversal)
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
-                // Instantly check if the clicked node mentions FocusGuard
                 if (isFocusGuardNode(source)) {
                     source.recycle();
                     triggerKickOut();
@@ -147,6 +171,9 @@ public class BlockerService extends AccessibilityService {
                 // Ensure we are in an Accessibility-related screen
                 boolean isAccessibilityWindow = !root.findAccessibilityNodeInfosByText("Accessibility").isEmpty() ||
                                                !root.findAccessibilityNodeInfosByText("এক্সেসিবিলিটি").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Installed apps").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Installed services").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("ইনস্টল করা অ্যাপ").isEmpty() ||
                                                !root.findAccessibilityNodeInfosByText("Use Focus Guard").isEmpty() ||
                                                !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty();
                 
@@ -164,6 +191,7 @@ public class BlockerService extends AccessibilityService {
         // 1. If it's a LIST page or APP INFO page, it's NOT a detail screen.
         String[] ignoreTitles = {
             "Accessibility", "Downloaded services", "এক্সেসিবিলিটি", "ডাউনলোড করা পরিষেবা",
+            "Installed apps", "Installed services", "ইনস্টল করা অ্যাপ",
             "App info", "অ্যাপ তথ্য", "Permissions", "Storage"
         };
         for (String title : ignoreTitles) {
@@ -268,20 +296,39 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
-    /** Helper to check if a node or its children mention FocusGuard */
+    /** Helper to check if a node or its children mention FocusGuard (deep traversal) */
     private boolean isFocusGuardNode(AccessibilityNodeInfo node) {
         if (node == null) return false;
         
-        // Check the node itself
+        // Check the node's text
         CharSequence txt = node.getText();
         if (txt != null && (txt.toString().contains("Focus Guard") || txt.toString().contains("FocusGuard"))) return true;
         
-        // Check direct children (for list items)
+        // Check the node's content description (some OEMs put labels here)
+        CharSequence desc = node.getContentDescription();
+        if (desc != null && (desc.toString().contains("Focus Guard") || desc.toString().contains("FocusGuard"))) return true;
+        
+        // Check children recursively (up to 3 levels deep for complex list items)
+        return isFocusGuardInChildren(node, 0);
+    }
+
+    /** Recursively check children for FocusGuard text (max 3 levels) */
+    private boolean isFocusGuardInChildren(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth >= 3) return false;
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
                 CharSequence ctxt = child.getText();
                 if (ctxt != null && (ctxt.toString().contains("Focus Guard") || ctxt.toString().contains("FocusGuard"))) {
+                    child.recycle();
+                    return true;
+                }
+                CharSequence cdesc = child.getContentDescription();
+                if (cdesc != null && (cdesc.toString().contains("Focus Guard") || cdesc.toString().contains("FocusGuard"))) {
+                    child.recycle();
+                    return true;
+                }
+                if (isFocusGuardInChildren(child, depth + 1)) {
                     child.recycle();
                     return true;
                 }
