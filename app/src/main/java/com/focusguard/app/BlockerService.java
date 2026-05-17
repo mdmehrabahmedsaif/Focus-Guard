@@ -78,7 +78,7 @@ public class BlockerService extends AccessibilityService {
         if (!pkgName.equals(OUR_PACKAGE)) {
             // Check Accessibility Protection
             if (prefManager.isAccessibilityProtected()) {
-                handleAccessibilityProtection(event, eventType);
+                handleAccessibilityProtection(event, eventType, pkgName);
             }
             // Check Device Admin Protection
             if (prefManager.isDeviceAdminProtected()) {
@@ -119,11 +119,14 @@ public class BlockerService extends AccessibilityService {
      * Instead, the text is in event.getSource() — the actual clicked node.
      * We check BOTH for maximum OEM compatibility.
      */
-    private void handleAccessibilityProtection(AccessibilityEvent event, int eventType) {
+    private void handleAccessibilityProtection(AccessibilityEvent event, int eventType, String pkgName) {
+        boolean isSettings = pkgName.contains("settings");
+
         // --- PERFORMANCE OPTIMIZATION ---
-        // Only act on Clicks or Window Changes. Ignore content updates (scrolling, etc.)
+        // Only act on Clicks, Window Changes, or Content Changes (if in Settings)
         if (eventType != AccessibilityEvent.TYPE_VIEW_CLICKED && 
-            eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
+            eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            !(eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isSettings)) return;
 
         // --- CLICK DETECTION (Ultra-Fast, Sub-0.1s) ---
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
@@ -163,8 +166,9 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // --- SCREEN DETECTION (Only on full window change) ---
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        // --- SCREEN DETECTION (Only on full window change or content change in settings) ---
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+           (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isSettings)) {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
@@ -175,7 +179,10 @@ public class BlockerService extends AccessibilityService {
                                                !root.findAccessibilityNodeInfosByText("Installed services").isEmpty() ||
                                                !root.findAccessibilityNodeInfosByText("ইনস্টল করা অ্যাপ").isEmpty() ||
                                                !root.findAccessibilityNodeInfosByText("Use Focus Guard").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty();
+                                               !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Shortcut").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("শর্টকাট").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Focus Guard Blocker").isEmpty();
                 
                 if (isAccessibilityWindow && isFocusGuardDetailScreen(root)) {
                     triggerKickOut();
@@ -213,7 +220,9 @@ public class BlockerService extends AccessibilityService {
                                         !root.findAccessibilityNodeInfosByText("Use Focus Guard").isEmpty() ||
                                         !root.findAccessibilityNodeInfosByText("Use FocusGuard").isEmpty() ||
                                         !root.findAccessibilityNodeInfosByText("ব্যবহার").isEmpty() ||
-                                        !root.findAccessibilityNodeInfosByText("Shortcut").isEmpty();
+                                        !root.findAccessibilityNodeInfosByText("Shortcut").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("শর্টকাট").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("Focus Guard Blocker").isEmpty();
         
         return isAccessibilityContext || findSwitchInNode(root);
     }
