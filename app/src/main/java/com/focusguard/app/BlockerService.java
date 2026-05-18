@@ -707,15 +707,15 @@ public class BlockerService extends AccessibilityService {
                     isGoogleDocsWebSearchOpening = true;
                     googleDocsWebSearchClickTime = currentTime;
                     
-                    performGlobalAction(GLOBAL_ACTION_BACK);
+                    triggerKickOut();
                     
-                    // Fire a delayed BACK to ensure the newly opening pane is killed
-                    // if the initial BACK was swallowed by the bottom sheet transition
+                    // Fire a delayed HOME action to ensure the newly opening pane is killed
+                    // if the initial HOME action was swallowed by the bottom sheet transition
                     mainHandler.postDelayed(new Runnable() {
                         @Override
                         public void run() {
                             if (isGoogleDocsWebSearchOpening) {
-                                performGlobalAction(GLOBAL_ACTION_BACK);
+                                triggerKickOut();
                                 isGoogleDocsWebSearchOpening = false;
                             }
                         }
@@ -729,10 +729,10 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
-            // Aggressively spam BACK for 600ms after clicking "From web" to ensure ZERO delay.
+            // Aggressively spam HOME for 600ms after clicking "From web" to ensure ZERO delay.
             // Do NOT set it to false immediately, otherwise subsequent animation events bypass this fast-path.
             if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime < 600)) {
-                performGlobalAction(GLOBAL_ACTION_BACK);
+                triggerKickOut();
                 return;
             }
             
@@ -757,14 +757,7 @@ public class BlockerService extends AccessibilityService {
                 }
 
                 if (isSearchUI) {
-                    performGlobalAction(GLOBAL_ACTION_BACK);
-                    // Post a delayed BACK to ensure it closes completely even if animations are running
-                    mainHandler.postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            performGlobalAction(GLOBAL_ACTION_BACK);
-                        }
-                    }, 150);
+                    triggerKickOut(); // Kick out to HOME instantly to eliminate transition delays completely!
                 }
             } finally {
                 root.recycle();
@@ -799,7 +792,12 @@ public class BlockerService extends AccessibilityService {
             return true;
         }
         
-        // The user explicitly requested to trigger on the left arrow.
+        // If we see the Left Arrow AND Search Icon (or Clear icon), block it instantly.
+        // This covers the search suggestions/history loophole when formatting bar is hidden.
+        if (hasLeftArrow && hasSearchIcon) {
+            return true;
+        }
+        
         // If we see the Left Arrow AND Web Domains (e.g. results loaded but no Search Icon), block it.
         if (hasLeftArrow && hasWebDomain) {
             return true;
