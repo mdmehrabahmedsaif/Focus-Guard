@@ -753,7 +753,7 @@ public class BlockerService extends AccessibilityService {
                 
                 // Deep recursive check if fast check missed it (very common for hints in EditTexts)
                 if (!isSearchUI) {
-                    isSearchUI = checkDocsSearchUIRecursively(root);
+                    isSearchUI = checkDocsSearchDeep(root);
                 }
 
                 if (isSearchUI) {
@@ -772,8 +772,36 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
-    private boolean checkDocsSearchUIRecursively(AccessibilityNodeInfo node) {
-        if (node == null) return false;
+    private boolean isWebSearchExplicit = false;
+    private boolean hasSearchIcon = false;
+    private boolean hasFormattingBar = false;
+    private boolean hasWebDomain = false;
+
+    private boolean checkDocsSearchDeep(AccessibilityNodeInfo root) {
+        isWebSearchExplicit = false;
+        hasSearchIcon = false;
+        hasFormattingBar = false;
+        hasWebDomain = false;
+        
+        scanDocsUI(root);
+        
+        if (isWebSearchExplicit) return true;
+        
+        // If we are in the editor (formatting bar visible) AND we see a search icon or web domains
+        if (hasFormattingBar && (hasSearchIcon || hasWebDomain)) {
+            return true;
+        }
+        
+        // Even if keyboard hides formatting bar, if we see search icon AND web domains, it's the web search
+        if (hasSearchIcon && hasWebDomain) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    private void scanDocsUI(AccessibilityNodeInfo node) {
+        if (node == null) return;
         
         CharSequence txt = node.getText();
         if (txt != null) {
@@ -785,7 +813,13 @@ public class BlockerService extends AccessibilityService {
                 s.contains("আপনার দস্তাবেজ এবং ওয়েব") ||
                 s.contains("search images") ||
                 s.contains("ছবি খুঁজুন")) {
-                return true;
+                isWebSearchExplicit = true;
+            }
+            if (s.startsWith("www.") || s.contains(".com") || s.contains(".org") || s.contains(".net") || s.contains("wikipedia.org")) {
+                // Ignore if it's the main editable document text which might be huge
+                if (s.length() < 100 && !node.isEditable()) {
+                    hasWebDomain = true;
+                }
             }
         }
         
@@ -799,20 +833,23 @@ public class BlockerService extends AccessibilityService {
                 s.contains("আপনার দস্তাবেজ এবং ওয়েব") ||
                 s.contains("search images") ||
                 s.contains("ছবি খুঁজুন")) {
-                return true;
+                isWebSearchExplicit = true;
+            }
+            if (s.equals("search") || s.equals("অনুসন্ধান") || s.equals("সার্চ") || s.equals("search web") || s.equals("ওয়েবে খুঁজুন") || s.equals("search query") || s.equals("clear query")) {
+                hasSearchIcon = true;
+            }
+            if (s.equals("bold") || s.equals("বোল্ড") || s.equals("italic") || s.equals("ইটালিক") || s.equals("underline") || s.equals("আন্ডারলাইন")) {
+                hasFormattingBar = true;
             }
         }
         
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
-            if (checkDocsSearchUIRecursively(child)) {
-                if (child != null) child.recycle();
-                return true;
-            }
+            scanDocsUI(child);
             if (child != null) child.recycle();
+            
+            if (isWebSearchExplicit) return; // Fast exit
         }
-        
-        return false;
     }
 
     private boolean isFromWebNodeOrChildren(AccessibilityNodeInfo node, int depth) {
