@@ -686,6 +686,7 @@ public class BlockerService extends AccessibilityService {
 
     private boolean isGoogleDocsWebSearchOpening = false;
     private long googleDocsWebSearchClickTime = 0;
+    private long lastGoogleDocsBlockTime = 0;
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
         long currentTime = System.currentTimeMillis();
@@ -729,14 +730,8 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
-            // Aggressively spam BACK for 600ms after clicking "From web" to ensure ZERO delay.
-            // Do NOT set it to false immediately, otherwise subsequent animation events bypass this fast-path.
-            if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime < 600)) {
-                performGlobalAction(GLOBAL_ACTION_BACK);
-                return;
-            }
-            
-            // Expire the flag if it's been more than 600ms
+            // Remove the aggressive 600ms spam block to prevent exiting the entire application.
+            // We now rely on the 150ms click delay and the 400ms-cooldown-secured isSearchUI detection.
             if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime >= 600)) {
                 isGoogleDocsWebSearchOpening = false;
             }
@@ -757,15 +752,19 @@ public class BlockerService extends AccessibilityService {
                 }
 
                 if (isSearchUI) {
-                    performGlobalAction(GLOBAL_ACTION_BACK);
-                    
-                    // Post a delayed BACK to ensure it closes completely even if animations are running
-                    mainHandler.postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            performGlobalAction(GLOBAL_ACTION_BACK);
-                        }
-                    }, 100);
+                    long now = System.currentTimeMillis();
+                    if (now - lastGoogleDocsBlockTime > 400) {
+                        lastGoogleDocsBlockTime = now;
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        
+                        // Post a delayed BACK to ensure it closes completely even if animations are running
+                        mainHandler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                performGlobalAction(GLOBAL_ACTION_BACK);
+                            }
+                        }, 100);
+                    }
                 }
             } finally {
                 root.recycle();
