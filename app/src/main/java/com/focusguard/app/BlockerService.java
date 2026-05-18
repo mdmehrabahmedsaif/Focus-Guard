@@ -695,10 +695,15 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
                 String txt = getEventText(event).toLowerCase();
-                if (txt.contains("from web") || 
-                    txt.contains("ওয়েব থেকে") || 
-                    txt.contains("ওয়েব থেকে")) {
-                    
+                boolean clickedFromWeb = txt.contains("from web") || 
+                                         txt.contains("ওয়েব থেকে") || 
+                                         txt.contains("ওয়েব থেকে");
+                
+                if (!clickedFromWeb && isFromWebNodeOrChildren(source, 0)) {
+                    clickedFromWeb = true;
+                }
+
+                if (clickedFromWeb) {
                     isGoogleDocsWebSearchOpening = true;
                     googleDocsWebSearchClickTime = currentTime;
                     
@@ -770,6 +775,33 @@ public class BlockerService extends AccessibilityService {
                 root.recycle();
             }
         }
+    }
+
+    private boolean isFromWebNodeOrChildren(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 3) return false;
+        
+        CharSequence txt = node.getText();
+        if (txt != null) {
+            String s = txt.toString().toLowerCase();
+            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে")) return true;
+        }
+        
+        CharSequence desc = node.getContentDescription();
+        if (desc != null) {
+            String s = desc.toString().toLowerCase();
+            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে")) return true;
+        }
+        
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (isFromWebNodeOrChildren(child, depth + 1)) {
+                if (child != null) child.recycle();
+                return true;
+            }
+            if (child != null) child.recycle();
+        }
+        
+        return false;
     }
 
     // =========================================================================
