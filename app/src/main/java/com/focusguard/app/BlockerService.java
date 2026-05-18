@@ -729,15 +729,15 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
-            // If the user just clicked "From web" < 1 second ago, any UI change means it's opening
-            if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime < 1000)) {
+            // Aggressively spam BACK for 600ms after clicking "From web" to ensure ZERO delay.
+            // Do NOT set it to false immediately, otherwise subsequent animation events bypass this fast-path.
+            if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime < 600)) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
-                isGoogleDocsWebSearchOpening = false; // We successfully killed it
                 return;
             }
             
-            // Expire the flag if it's been more than 1 second
-            if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime >= 1000)) {
+            // Expire the flag if it's been more than 600ms
+            if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime >= 600)) {
                 isGoogleDocsWebSearchOpening = false;
             }
 
@@ -776,12 +776,14 @@ public class BlockerService extends AccessibilityService {
     private boolean hasSearchIcon = false;
     private boolean hasFormattingBar = false;
     private boolean hasWebDomain = false;
+    private boolean hasLeftArrow = false;
 
     private boolean checkDocsSearchDeep(AccessibilityNodeInfo root) {
         isWebSearchExplicit = false;
         hasSearchIcon = false;
         hasFormattingBar = false;
         hasWebDomain = false;
+        hasLeftArrow = false;
         
         scanDocsUI(root);
         
@@ -794,6 +796,17 @@ public class BlockerService extends AccessibilityService {
         
         // Even if keyboard hides formatting bar, if we see search icon AND web domains, it's the web search
         if (hasSearchIcon && hasWebDomain) {
+            return true;
+        }
+        
+        // The user explicitly requested to trigger on the left arrow.
+        // If we see the Left Arrow AND Web Domains (e.g. results loaded but no Search Icon), block it.
+        if (hasLeftArrow && hasWebDomain) {
+            return true;
+        }
+        
+        // If we see the Left Arrow AND Search Icon AND we are in the editor, block it.
+        if (hasLeftArrow && hasSearchIcon && hasFormattingBar) {
             return true;
         }
         
@@ -840,6 +853,9 @@ public class BlockerService extends AccessibilityService {
             }
             if (s.equals("bold") || s.equals("বোল্ড") || s.equals("italic") || s.equals("ইটালিক") || s.equals("underline") || s.equals("আন্ডারলাইন")) {
                 hasFormattingBar = true;
+            }
+            if (s.equals("navigate up") || s.equals("close") || s.equals("উপরে নেভিগেট করুন") || s.equals("বন্ধ করুন") || s.equals("ফিরে যান")) {
+                hasLeftArrow = true;
             }
         }
         
