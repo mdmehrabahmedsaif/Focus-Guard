@@ -707,15 +707,15 @@ public class BlockerService extends AccessibilityService {
                     isGoogleDocsWebSearchOpening = true;
                     googleDocsWebSearchClickTime = currentTime;
                     
-                    triggerKickOut();
+                    performGlobalAction(GLOBAL_ACTION_BACK);
                     
-                    // Fire a delayed HOME action to ensure the newly opening pane is killed
-                    // if the initial HOME action was swallowed by the bottom sheet transition
+                    // Fire a delayed BACK action to ensure the newly opening pane is killed
+                    // if the initial BACK action was swallowed by the bottom sheet transition
                     mainHandler.postDelayed(new Runnable() {
                         @Override
                         public void run() {
                             if (isGoogleDocsWebSearchOpening) {
-                                triggerKickOut();
+                                performGlobalAction(GLOBAL_ACTION_BACK);
                                 isGoogleDocsWebSearchOpening = false;
                             }
                         }
@@ -729,10 +729,10 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
-            // Aggressively spam HOME for 600ms after clicking "From web" to ensure ZERO delay.
+            // Aggressively spam BACK for 600ms after clicking "From web" to ensure ZERO delay.
             // Do NOT set it to false immediately, otherwise subsequent animation events bypass this fast-path.
             if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime < 600)) {
-                triggerKickOut();
+                performGlobalAction(GLOBAL_ACTION_BACK);
                 return;
             }
             
@@ -757,7 +757,15 @@ public class BlockerService extends AccessibilityService {
                 }
 
                 if (isSearchUI) {
-                    triggerKickOut(); // Kick out to HOME instantly to eliminate transition delays completely!
+                    performGlobalAction(GLOBAL_ACTION_BACK);
+                    
+                    // Post a delayed BACK to ensure it closes completely even if animations are running
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            performGlobalAction(GLOBAL_ACTION_BACK);
+                        }
+                    }, 100);
                 }
             } finally {
                 root.recycle();
