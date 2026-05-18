@@ -684,7 +684,12 @@ public class BlockerService extends AccessibilityService {
     // GOOGLE DOCS WEB SEARCH BLOCKING
     // =========================================================================
 
+    private boolean isGoogleDocsWebSearchOpening = false;
+    private long googleDocsWebSearchClickTime = 0;
+
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
+        long currentTime = System.currentTimeMillis();
+
         // 1. Instantly block clicks on "From web"
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             AccessibilityNodeInfo source = event.getSource();
@@ -693,7 +698,23 @@ public class BlockerService extends AccessibilityService {
                 if (txt.contains("from web") || 
                     txt.contains("ওয়েব থেকে") || 
                     txt.contains("ওয়েব থেকে")) {
+                    
+                    isGoogleDocsWebSearchOpening = true;
+                    googleDocsWebSearchClickTime = currentTime;
+                    
                     performGlobalAction(GLOBAL_ACTION_BACK);
+                    
+                    // Fire a delayed BACK to ensure the newly opening pane is killed
+                    // if the initial BACK was swallowed by the bottom sheet transition
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (isGoogleDocsWebSearchOpening) {
+                                performGlobalAction(GLOBAL_ACTION_BACK);
+                                isGoogleDocsWebSearchOpening = false;
+                            }
+                        }
+                    }, 150);
                 }
                 source.recycle();
             }
@@ -703,6 +724,18 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
+            // If the user just clicked "From web" < 1 second ago, any UI change means it's opening
+            if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime < 1000)) {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                isGoogleDocsWebSearchOpening = false; // We successfully killed it
+                return;
+            }
+            
+            // Expire the flag if it's been more than 1 second
+            if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime >= 1000)) {
+                isGoogleDocsWebSearchOpening = false;
+            }
+
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
@@ -713,6 +746,23 @@ public class BlockerService extends AccessibilityService {
                                      !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
                                      !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty();
                 
+                // Fallback for search input fields explicitly
+                if (!isSearchUI) {
+                    List<AccessibilityNodeInfo> searchImages = root.findAccessibilityNodeInfosByText("Search images");
+                    if (searchImages != null && !searchImages.isEmpty()) {
+                        isSearchUI = true;
+                        for(AccessibilityNodeInfo n : searchImages) n.recycle();
+                    }
+                    
+                    if (!isSearchUI) {
+                        List<AccessibilityNodeInfo> searchImagesBn = root.findAccessibilityNodeInfosByText("ছবি খুঁজুন");
+                        if (searchImagesBn != null && !searchImagesBn.isEmpty()) {
+                            isSearchUI = true;
+                            for(AccessibilityNodeInfo n : searchImagesBn) n.recycle();
+                        }
+                    }
+                }
+
                 if (isSearchUI) {
                     performGlobalAction(GLOBAL_ACTION_BACK);
                 }
