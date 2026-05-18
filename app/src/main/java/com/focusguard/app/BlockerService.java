@@ -744,37 +744,75 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // Check for Web Search UI indicators
+                // Fast check using framework method
                 boolean isSearchUI = !root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
                                      !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty() ||
                                      !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
                                      !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
                                      !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty();
                 
-                // Fallback for search input fields explicitly
+                // Deep recursive check if fast check missed it (very common for hints in EditTexts)
                 if (!isSearchUI) {
-                    List<AccessibilityNodeInfo> searchImages = root.findAccessibilityNodeInfosByText("Search images");
-                    if (searchImages != null && !searchImages.isEmpty()) {
-                        isSearchUI = true;
-                        for(AccessibilityNodeInfo n : searchImages) n.recycle();
-                    }
-                    
-                    if (!isSearchUI) {
-                        List<AccessibilityNodeInfo> searchImagesBn = root.findAccessibilityNodeInfosByText("ছবি খুঁজুন");
-                        if (searchImagesBn != null && !searchImagesBn.isEmpty()) {
-                            isSearchUI = true;
-                            for(AccessibilityNodeInfo n : searchImagesBn) n.recycle();
-                        }
-                    }
+                    isSearchUI = checkDocsSearchUIRecursively(root);
                 }
 
                 if (isSearchUI) {
                     performGlobalAction(GLOBAL_ACTION_BACK);
+                    // Post a delayed BACK to ensure it closes completely even if animations are running
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            performGlobalAction(GLOBAL_ACTION_BACK);
+                        }
+                    }, 150);
                 }
             } finally {
                 root.recycle();
             }
         }
+    }
+
+    private boolean checkDocsSearchUIRecursively(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        
+        CharSequence txt = node.getText();
+        if (txt != null) {
+            String s = txt.toString().toLowerCase();
+            if (s.contains("search your docs and the web") ||
+                s.contains("search directly in docs") ||
+                s.contains("find images, facts and text") ||
+                s.contains("আপনার ডক্স এবং ওয়েব") ||
+                s.contains("আপনার দস্তাবেজ এবং ওয়েব") ||
+                s.contains("search images") ||
+                s.contains("ছবি খুঁজুন")) {
+                return true;
+            }
+        }
+        
+        CharSequence desc = node.getContentDescription();
+        if (desc != null) {
+            String s = desc.toString().toLowerCase();
+            if (s.contains("search your docs and the web") ||
+                s.contains("search directly in docs") ||
+                s.contains("find images, facts and text") ||
+                s.contains("আপনার ডক্স এবং ওয়েব") ||
+                s.contains("আপনার দস্তাবেজ এবং ওয়েব") ||
+                s.contains("search images") ||
+                s.contains("ছবি খুঁজুন")) {
+                return true;
+            }
+        }
+        
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (checkDocsSearchUIRecursively(child)) {
+                if (child != null) child.recycle();
+                return true;
+            }
+            if (child != null) child.recycle();
+        }
+        
+        return false;
     }
 
     private boolean isFromWebNodeOrChildren(AccessibilityNodeInfo node, int depth) {
