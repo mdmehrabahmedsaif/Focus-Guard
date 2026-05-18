@@ -693,7 +693,7 @@ public class BlockerService extends AccessibilityService {
                 if (txt.contains("from web") || 
                     txt.contains("ওয়েব থেকে") || 
                     txt.contains("ওয়েব থেকে")) {
-                    triggerKickOut();
+                    performGlobalAction(GLOBAL_ACTION_BACK);
                 }
                 source.recycle();
             }
@@ -714,7 +714,7 @@ public class BlockerService extends AccessibilityService {
                                      !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty();
                 
                 if (isSearchUI) {
-                    triggerKickOut();
+                    performGlobalAction(GLOBAL_ACTION_BACK);
                 }
             } finally {
                 root.recycle();
