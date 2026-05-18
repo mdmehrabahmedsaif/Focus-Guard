@@ -27,6 +27,7 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_WHATSAPP  = "com.whatsapp";
     private static final String PKG_YOUTUBE   = "com.google.android.youtube";
     private static final String PKG_INSTAGRAM = "com.instagram.android";
+    private static final String PKG_GOOGLE_DOCS = "com.google.android.apps.docs.editors.docs";
 
     private static final String OUR_PACKAGE   = "com.focusguard.app";
     private static final String SERVICE_LABEL = "Focus Guard";
@@ -104,6 +105,10 @@ public class BlockerService extends AccessibilityService {
                     && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
                 handleInstagram();
+            }
+        } else if (PKG_GOOGLE_DOCS.equals(pkgName)) {
+            if (prefManager.isGoogleDocsBlocked()) {
+                handleGoogleDocs(event, eventType);
             }
         }
     }
@@ -672,6 +677,48 @@ public class BlockerService extends AccessibilityService {
             }
         } finally {
             root.recycle();
+        }
+    }
+
+    // =========================================================================
+    // GOOGLE DOCS WEB SEARCH BLOCKING
+    // =========================================================================
+
+    private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
+        // 1. Instantly block clicks on "From web"
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                String txt = getEventText(event).toLowerCase();
+                if (txt.contains("from web") || 
+                    txt.contains("ওয়েব থেকে") || 
+                    txt.contains("ওয়েব থেকে")) {
+                    triggerKickOut();
+                }
+                source.recycle();
+            }
+        }
+
+        // 2. Block the Web Search screen if it somehow opens (zero-latency check)
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            try {
+                // Check for Web Search UI indicators
+                boolean isSearchUI = !root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty();
+                
+                if (isSearchUI) {
+                    triggerKickOut();
+                }
+            } finally {
+                root.recycle();
+            }
         }
     }
 

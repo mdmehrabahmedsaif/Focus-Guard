@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">Focus Guard</string>
     <string name="accessibility_service_label">Focus Guard Blocker</string>
-    <string name="accessibility_description">Focus Guard monitors and blocks WhatsApp Channels, YouTube Shorts, and Instagram Reels to help you stay focused.</string>
+    <string name="accessibility_description">Focus Guard monitors and blocks WhatsApp Channels, YouTube Shorts, Instagram Reels, and Google Docs Web Search to help you stay focused.</string>
 </resources>

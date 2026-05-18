@@ -29,7 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvAdminStatus, tvAccessibilityStatus;
     private View btnEnableAdmin, btnDisableAdmin, btnEnableAccessibility, btnDisableAccessibility;
     private View btnSavePassword;
-    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swBlockAcc, swBlockAdmin;
+    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swGoogleDocs, swBlockAcc, swBlockAdmin;
     private EditText etPassword;
 
     private static final int REQ_ADMIN = 101;
@@ -65,10 +65,12 @@ public class MainActivity extends AppCompatActivity {
         setupAppRow(R.id.rowWhatsApp,  "💬", "WhatsApp Updates", "Block channels & feeds");
         setupAppRow(R.id.rowYouTube,   "▶️", "YouTube Shorts",   "Stop scroll addiction");
         setupAppRow(R.id.rowInstagram, "📸", "Instagram Reels",  "Master your time");
+        setupAppRow(R.id.rowGoogleDocs,"📝", "Google Docs",      "Block web image search");
 
         swWhatsApp  = findViewById(R.id.rowWhatsApp).findViewById(R.id.itemSwitch);
         swYouTube   = findViewById(R.id.rowYouTube).findViewById(R.id.itemSwitch);
         swInstagram = findViewById(R.id.rowInstagram).findViewById(R.id.itemSwitch);
+        swGoogleDocs = findViewById(R.id.rowGoogleDocs).findViewById(R.id.itemSwitch);
         swBlockAcc   = findViewById(R.id.switchBlockAccessibility);
         swBlockAdmin = findViewById(R.id.switchBlockDeviceAdmin);
 
@@ -120,15 +122,19 @@ public class MainActivity extends AppCompatActivity {
         // --- App Blocking Switches ---
         swWhatsApp.setOnCheckedChangeListener((b, checked) -> {
             pref.setWhatsAppBlocked(checked);
-            pref.setServiceActive(checked || pref.isYouTubeBlocked() || pref.isInstagramBlocked());
+            pref.setServiceActive(checked || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleDocsBlocked());
         });
         swYouTube.setOnCheckedChangeListener((b, checked) -> {
             pref.setYouTubeBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || checked || pref.isInstagramBlocked());
+            pref.setServiceActive(pref.isWhatsAppBlocked() || checked || pref.isInstagramBlocked() || pref.isGoogleDocsBlocked());
         });
         swInstagram.setOnCheckedChangeListener((b, checked) -> {
             pref.setInstagramBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || checked);
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || checked || pref.isGoogleDocsBlocked());
+        });
+        swGoogleDocs.setOnCheckedChangeListener((b, checked) -> {
+            pref.setGoogleDocsBlocked(checked);
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || checked);
         });
 
         // Independent protection locks
@@ -231,6 +237,7 @@ public class MainActivity extends AppCompatActivity {
         swWhatsApp.setChecked(pref.isWhatsAppBlocked());
         swYouTube.setChecked(pref.isYouTubeBlocked());
         swInstagram.setChecked(pref.isInstagramBlocked());
+        swGoogleDocs.setChecked(pref.isGoogleDocsBlocked());
 
         // Protection lock switches (independent)
         swBlockAcc.setChecked(pref.isAccessibilityProtected());
