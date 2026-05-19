@@ -740,14 +740,13 @@ public class BlockerService extends AccessibilityService {
     }
 
     /**
-     * Checks if a string contains any Google Docs web search indicator text.
-     * Used by both the zero-IPC event check and the tree scan.
+     * Checks if a string contains any Google Docs web search PAGE indicator text.
+     * NOTE: "from web" is NOT here — it only appears on the Image panel which must
+     * remain accessible. "From web" clicks are caught separately in FAST PATH #1.
      */
     private boolean isGoogleDocsSearchText(String text) {
         String s = text.toLowerCase();
         return s.contains("search your docs and the web") ||
-               s.contains("from web") ||
-               s.contains("ওয়েব থেকে") ||
                s.contains("আপনার ডক্স এবং ওয়েব") ||
                s.contains("আপনার দস্তাবেজ এবং ওয়েব") ||
                s.contains("search images") ||
