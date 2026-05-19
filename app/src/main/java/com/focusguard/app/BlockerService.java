@@ -690,17 +690,15 @@ public class BlockerService extends AccessibilityService {
     private long lastGoogleDocsBlockTime = 0;
 
     private void kickOutToGoogleDocsHome() {
-        try {
-            Intent intent = getPackageManager().getLaunchIntentForPackage(PKG_GOOGLE_DOCS);
-            if (intent != null) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                startActivity(intent);
-            } else {
-                performGlobalAction(GLOBAL_ACTION_HOME);
+        // Perform exactly two BACK actions to close the search panel and exit the editor to Google Docs Home
+        // without exiting the Google Docs application entirely.
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                performGlobalAction(GLOBAL_ACTION_BACK);
             }
-        } catch (Exception e) {
-            performGlobalAction(GLOBAL_ACTION_HOME);
-        }
+        }, 150);
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
@@ -725,17 +723,13 @@ public class BlockerService extends AccessibilityService {
                     
                     kickOutToGoogleDocsHome();
                     
-                    // Fire a delayed action to ensure the newly opening pane is killed
-                    // if the initial activity start was swallowed or delayed by transitions
+                    // Clear the opening flag after 300ms (no duplicate triggers)
                     mainHandler.postDelayed(new Runnable() {
                         @Override
                         public void run() {
-                            if (isGoogleDocsWebSearchOpening) {
-                                kickOutToGoogleDocsHome();
-                                isGoogleDocsWebSearchOpening = false;
-                            }
+                            isGoogleDocsWebSearchOpening = false;
                         }
-                    }, 150);
+                    }, 300);
                 }
                 source.recycle();
             }
@@ -768,17 +762,10 @@ public class BlockerService extends AccessibilityService {
 
                 if (isSearchUI) {
                     long now = System.currentTimeMillis();
-                    if (now - lastGoogleDocsBlockTime > 400) {
+                    // Set a higher cooldown (1500ms) to ensure exactly one kick-out trigger executes
+                    if (now - lastGoogleDocsBlockTime > 1500) {
                         lastGoogleDocsBlockTime = now;
                         kickOutToGoogleDocsHome();
-                        
-                        // Post a delayed action to ensure it closes completely even if animations are running
-                        mainHandler.postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                kickOutToGoogleDocsHome();
-                            }
-                        }, 100);
                     }
                 }
             } finally {
