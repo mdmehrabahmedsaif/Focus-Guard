@@ -766,6 +766,14 @@ public class BlockerService extends AccessibilityService {
 
         // ===== FAST PATH #1: "From web" click detection =====
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            // ZERO-IPC check first: if the clicked element has text, block instantly
+            String eventTxt = getEventText(event).toLowerCase();
+            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে")) {
+                doGoogleDocsBlock();
+                return;
+            }
+
+            // Fallback: If text is missing from the event parcel, check the node tree
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
                 if (isFromWebNodeOrChildren(source, 0)) {
