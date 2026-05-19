@@ -1064,6 +1064,9 @@ public class BlockerService extends AccessibilityService {
     private boolean hasWebView = false;
     private boolean hasProgressBar = false;
     private boolean hasEditText = false;
+    private boolean hasHamburgerMenu = false;
+    private boolean hasFAB = false;
+    private boolean hasRecyclerView = false;
 
     private boolean checkDocsSearchDeep(AccessibilityNodeInfo root) {
         isWebSearchExplicit = false;
@@ -1074,6 +1077,9 @@ public class BlockerService extends AccessibilityService {
         hasWebView = false;
         hasProgressBar = false;
         hasEditText = false;
+        hasHamburgerMenu = false;
+        hasFAB = false;
+        hasRecyclerView = false;
         
         scanDocsUI(root);
         
@@ -1113,18 +1119,27 @@ public class BlockerService extends AccessibilityService {
             return true;
         }
         
+        // EXTREME HEURISTIC: Block any secondary search list page (neutralizes "From Web" and "Explore")
+        // If it's a search page with a list of results, NO hamburger menu (not main app), NO FAB, NO formatting bar.
+        // This makes it physically impossible to miss the browser even if all icons lose their content descriptions!
+        if (hasEditText && hasRecyclerView && hasSearchIcon && !hasHamburgerMenu && !hasFAB && !hasFormattingBar) {
+            return true;
+        }
+        
         return false;
     }
 
     private void scanDocsUI(AccessibilityNodeInfo node) {
         if (node == null) return;
         
-        // Detect WebView, ProgressBar, and EditText
+        // Detect UI Structures
         if (node.getClassName() != null) {
             String cls = node.getClassName().toString();
             if (cls.contains("WebView")) hasWebView = true;
             if (cls.contains("ProgressBar")) hasProgressBar = true;
             if (cls.contains("EditText") || cls.contains("AutoCompleteTextView")) hasEditText = true;
+            if (cls.contains("RecyclerView") || cls.contains("GridView")) hasRecyclerView = true;
+            if (cls.contains("FloatingActionButton")) hasFAB = true;
         }
         
         CharSequence txt = node.getText();
@@ -1159,8 +1174,11 @@ public class BlockerService extends AccessibilityService {
             if (s.equals("bold") || s.equals("বোল্ড") || s.equals("italic") || s.equals("ইটালিক") || s.equals("underline") || s.equals("আন্ডারলাইন") || s.equals("edit") || s.equals("সম্পাদনা করুন")) {
                 hasFormattingBar = true;
             }
-            if (s.contains("navigate") || s.contains("close") || s.contains("back") || s.contains("উপরে") || s.contains("বন্ধ") || s.contains("ফিরে") || s.contains("ব্যাক") || s.contains("arrow") || s.contains("left")) {
+            if (s.contains("navigate") || s.contains("close") || s.contains("back") || s.contains("উপরে") || s.contains("বন্ধ") || s.contains("ফিরে") || s.contains("ব্যাক") || s.contains("arrow") || s.contains("left") || s.contains("collapse") || s.contains("cancel")) {
                 hasLeftArrow = true;
+            }
+            if (s.contains("drawer") || s.contains("menu") || s.contains("navigation") || s.contains("মেনু") || s.contains("ড্রয়ার")) {
+                hasHamburgerMenu = true;
             }
         }
         
@@ -1172,7 +1190,7 @@ public class BlockerService extends AccessibilityService {
             // Fast exit: stop scanning once we have enough signals
             if (isWebSearchExplicit) return;
             if (hasLeftArrow && hasWebView) return;
-            if (hasLeftArrow && hasSearchIcon) return;
+            if (hasLeftArrow && hasEditText && hasProgressBar) return;
         }
     }
 
