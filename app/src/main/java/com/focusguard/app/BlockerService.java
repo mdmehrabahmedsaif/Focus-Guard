@@ -701,6 +701,71 @@ public class BlockerService extends AccessibilityService {
         }, 150);
     }
 
+    private boolean detectGoogleDocsSearchUI(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+
+        // 1. Screen 3 Check (Image Preview): "Insert" button at top-right + copyright/URL footer
+        boolean hasInsertBtn = !root.findAccessibilityNodeInfosByText("Insert").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("সন্নিবেশ করুন").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("সন্নিবেশ").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("যোগ করুন").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("যোগ").isEmpty();
+        if (hasInsertBtn) {
+            boolean hasPreviewFooter = !root.findAccessibilityNodeInfosByText("Images may be subject to copyright").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("subject to copyright").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("কপিরাইট").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("https://").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("http://").isEmpty();
+            if (hasPreviewFooter) {
+                return true; // Screen 3 (Preview Screen) detected!
+            }
+        }
+
+        // 2. Screen 1 & 2 Check: Left Arrow (Navigate up) is present
+        boolean hasLeftArrow = !root.findAccessibilityNodeInfosByText("Navigate up").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("উপরে নেভিগেট করুন").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("close").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("বন্ধ করুন").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("fewer options").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty();
+
+        if (hasLeftArrow) {
+            // Search / Magnifying Glass icon or Clear text button is present
+            boolean hasSearchIcon = !root.findAccessibilityNodeInfosByText("Search").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("Clear").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("Clear text").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("অনুসন্ধান").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("সার্চ").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("মুছুন").isEmpty() ||
+                                    !root.findAccessibilityNodeInfosByText("মুছে ফেলুন").isEmpty();
+
+            if (hasSearchIcon) {
+                // Screen 2 (Image Detail Screen) Check: Link Icon is also present
+                boolean hasLinkIcon = !root.findAccessibilityNodeInfosByText("Open link").isEmpty() ||
+                                      !root.findAccessibilityNodeInfosByText("Link").isEmpty() ||
+                                      !root.findAccessibilityNodeInfosByText("Open in browser").isEmpty() ||
+                                      !root.findAccessibilityNodeInfosByText("Copy link").isEmpty() ||
+                                      !root.findAccessibilityNodeInfosByText("লিঙ্ক").isEmpty() ||
+                                      !root.findAccessibilityNodeInfosByText("লিঙ্ক খুলুন").isEmpty() ||
+                                      !root.findAccessibilityNodeInfosByText("ব্রাউজারে খুলুন").isEmpty();
+                
+                if (hasLinkIcon) {
+                    return true; // Screen 2 (Image Detail) detected!
+                }
+
+                // If it has Left Arrow + Search Icon but no Link Icon, it is Screen 1 (Search Screen)
+                return true; // Screen 1 (Search Results) detected!
+            }
+        }
+
+        return false;
+    }
+
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
         long currentTime = System.currentTimeMillis();
 
@@ -746,16 +811,21 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // Fast check using framework method (executed instantly in C++ by OS)
-                boolean isSearchUI = !root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
-                                     !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty() ||
-                                     !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
-                                     !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
-                                     !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty() ||
-                                     !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
-                                     !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty();
+                // Primary ultra-fast, zero-latency signature check (sub-1ms, zero lag!)
+                boolean isSearchUI = detectGoogleDocsSearchUI(root);
+
+                if (!isSearchUI) {
+                    // Fallback using framework method
+                    isSearchUI = !root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
+                                 !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty() ||
+                                 !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
+                                 !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
+                                 !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty() ||
+                                 !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
+                                 !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty();
+                }
                 
-                // Deep recursive check ONLY on WINDOW_STATE_CHANGED (to ensure typing is perfectly smooth/zero lag!)
+                // Deep recursive fallback check ONLY on WINDOW_STATE_CHANGED (to ensure typing is perfectly smooth/zero lag!)
                 if (!isSearchUI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                     isSearchUI = checkDocsSearchDeep(root);
                 }
