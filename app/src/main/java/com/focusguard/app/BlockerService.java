@@ -690,15 +690,8 @@ public class BlockerService extends AccessibilityService {
     private long lastGoogleDocsBlockTime = 0;
 
     private void kickOutToGoogleDocsHome() {
-        // Perform exactly two BACK actions to close the search panel and exit the editor to Google Docs Home
-        // without exiting the Google Docs application entirely.
+        // Perform a single BACK action to instantly return to safety without exiting the application entirely.
         performGlobalAction(GLOBAL_ACTION_BACK);
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                performGlobalAction(GLOBAL_ACTION_BACK);
-            }
-        }, 150);
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
