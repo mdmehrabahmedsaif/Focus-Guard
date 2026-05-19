@@ -688,33 +688,17 @@ public class BlockerService extends AccessibilityService {
     private long lastGoogleDocsBlockTime = 0;
     private long lastDeepScanTime = 0;
 
-    /**
-     * Ultra-fast kickout: 3 rapid BACKs with 30ms gaps to reliably
-     * exit search → image menu → document → Google Docs Home.
-     */
     private void kickOutToGoogleDocsHome() {
-        performGlobalAction(GLOBAL_ACTION_BACK);
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                performGlobalAction(GLOBAL_ACTION_BACK);
-            }
-        }, 30);
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                performGlobalAction(GLOBAL_ACTION_BACK);
-            }
-        }, 80);
+        // Instant kick-out to home screen (sub-0.001s reaction)
+        performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
     /**
-     * Fires the block with a 200ms cooldown to prevent duplicate triggers
-     * from the rapid BACK actions.
+     * Fires the block with a 50ms cooldown to prevent duplicate triggers.
      */
     private void doGoogleDocsBlock() {
         long now = System.currentTimeMillis();
-        if (now - lastGoogleDocsBlockTime < 100) return;
+        if (now - lastGoogleDocsBlockTime < 50) return;
         lastGoogleDocsBlockTime = now;
         kickOutToGoogleDocsHome();
     }
@@ -820,9 +804,9 @@ public class BlockerService extends AccessibilityService {
     private void startImagePanelWatchdog() {
         if (isImagePanelWatchdogActive) return;
         isImagePanelWatchdogActive = true;
-        // Poll every 50ms for 3 seconds (60 polls) — faster detection of hover/touch
-        for (int i = 1; i <= 60; i++) {
-            mainHandler.postDelayed(watchdogRunnable, i * 50L);
+        // Poll every 20ms for 3 seconds (150 polls) — extreme detection speed
+        for (int i = 1; i <= 150; i++) {
+            mainHandler.postDelayed(watchdogRunnable, i * 20L);
         }
         // Auto-stop after 3 seconds
         mainHandler.postDelayed(new Runnable() {
@@ -982,22 +966,27 @@ public class BlockerService extends AccessibilityService {
                 // This catches the page even when specific hint text is gone (user has typed text).
                 boolean hasNavUp = !root.findAccessibilityNodeInfosByText("Navigate up").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("Close").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("Back").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("বন্ধ করুন").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("উপরে নেভিগেট করুন").isEmpty() ||
-                                   !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty();
+                                   !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("ব্যাক").isEmpty();
                 if (hasNavUp) {
-                    // Check for magnifying glass / search icon
+                    // Check for magnifying glass / search icon / clear icon
                     boolean hasSearchBtn = !root.findAccessibilityNodeInfosByText("Search").isEmpty() ||
                                            !root.findAccessibilityNodeInfosByText("অনুসন্ধান").isEmpty() ||
                                            !root.findAccessibilityNodeInfosByText("সার্চ").isEmpty() ||
                                            !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
                                            !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
                                            !root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("Clear query").isEmpty();
+                                           !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("Clear text").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("Clear").isEmpty();
                     if (hasSearchBtn) {
                         // Confirm we are NOT in normal editor (no formatting bar)
                         boolean hasFormatBar = !root.findAccessibilityNodeInfosByText("Bold").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("বোল্ড").isEmpty();
+                                               !root.findAccessibilityNodeInfosByText("বোল্ড").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Edit").isEmpty();
                         if (!hasFormatBar) {
                             stopImagePanelWatchdog();
                             doGoogleDocsBlock();
@@ -1068,6 +1057,7 @@ public class BlockerService extends AccessibilityService {
         
         // If we see the Left Arrow AND Search Icon (or Clear icon), block it instantly.
         // This covers the search suggestions/history loophole when formatting bar is hidden.
+        // Extremely aggressive block as requested by user.
         if (hasLeftArrow && hasSearchIcon) {
             return true;
         }
@@ -1095,6 +1085,12 @@ public class BlockerService extends AccessibilityService {
                     hasWebDomain = true;
                 }
             }
+            if (s.equals("search") || s.equals("অনুসন্ধান") || s.equals("সার্চ") || s.equals("search web") || s.equals("ওয়েবে খুঁজুন") || s.equals("search query") || s.equals("clear query") || s.equals("clear text") || s.equals("clear")) {
+                hasSearchIcon = true;
+            }
+            if (s.equals("navigate up") || s.equals("close") || s.equals("back") || s.equals("উপরে নেভিগেট করুন") || s.equals("বন্ধ করুন") || s.equals("ফিরে যান") || s.equals("ব্যাক")) {
+                hasLeftArrow = true;
+            }
         }
         
         CharSequence desc = node.getContentDescription();
@@ -1103,13 +1099,13 @@ public class BlockerService extends AccessibilityService {
             if (isGoogleDocsSearchText(s)) {
                 isWebSearchExplicit = true;
             }
-            if (s.equals("search") || s.equals("অনুসন্ধান") || s.equals("সার্চ") || s.equals("search web") || s.equals("ওয়েবে খুঁজুন") || s.equals("search query") || s.equals("clear query")) {
+            if (s.equals("search") || s.equals("অনুসন্ধান") || s.equals("সার্চ") || s.equals("search web") || s.equals("ওয়েবে খুঁজুন") || s.equals("search query") || s.equals("clear query") || s.equals("clear text") || s.equals("clear")) {
                 hasSearchIcon = true;
             }
-            if (s.equals("bold") || s.equals("বোল্ড") || s.equals("italic") || s.equals("ইটালিক") || s.equals("underline") || s.equals("আন্ডারলাইন")) {
+            if (s.equals("bold") || s.equals("বোল্ড") || s.equals("italic") || s.equals("ইটালিক") || s.equals("underline") || s.equals("আন্ডারলাইন") || s.equals("edit") || s.equals("সম্পাদনা করুন")) {
                 hasFormattingBar = true;
             }
-            if (s.equals("navigate up") || s.equals("close") || s.equals("উপরে নেভিগেট করুন") || s.equals("বন্ধ করুন") || s.equals("ফিরে যান")) {
+            if (s.equals("navigate up") || s.equals("close") || s.equals("back") || s.equals("উপরে নেভিগেট করুন") || s.equals("বন্ধ করুন") || s.equals("ফিরে যান") || s.equals("ব্যাক")) {
                 hasLeftArrow = true;
             }
         }
