@@ -698,13 +698,13 @@ public class BlockerService extends AccessibilityService {
             public void run() {
                 performGlobalAction(GLOBAL_ACTION_BACK);
             }
-        }, 30);
+        }, 50);
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 performGlobalAction(GLOBAL_ACTION_BACK);
             }
-        }, 60);
+        }, 150);
     }
 
     /**
@@ -713,7 +713,7 @@ public class BlockerService extends AccessibilityService {
      */
     private void doGoogleDocsBlock() {
         long now = System.currentTimeMillis();
-        if (now - lastGoogleDocsBlockTime < 200) return;
+        if (now - lastGoogleDocsBlockTime < 300) return;
         lastGoogleDocsBlockTime = now;
         kickOutToGoogleDocsHome();
     }
@@ -752,7 +752,10 @@ public class BlockerService extends AccessibilityService {
                s.contains("search images") ||
                s.contains("ছবি খুঁজুন") ||
                s.contains("find images, facts and text") ||
-               s.contains("search directly in docs");
+               s.contains("search directly in docs") ||
+               s.contains("search web") ||
+               s.contains("ওয়েবে খুঁজুন") ||
+               s.contains("search query");
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
@@ -790,7 +793,7 @@ public class BlockerService extends AccessibilityService {
             eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
 
             long now = System.currentTimeMillis();
-            if (now - lastGoogleDocsBlockTime < 200) return;
+            if (now - lastGoogleDocsBlockTime < 300) return;
 
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
@@ -812,7 +815,11 @@ public class BlockerService extends AccessibilityService {
                 }
 
                 // Check 3: Other search page indicators (short-circuit evaluation)
-                if (!root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
+                if (!root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
+                    !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
+                    !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
+                    !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
+                    !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
                     !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty() ||
                     !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
                     !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty() ||
