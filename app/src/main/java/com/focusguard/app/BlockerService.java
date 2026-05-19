@@ -10,12 +10,13 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.List;
 
 /**
- * FocusGuard Blocker Service — v1.6.2
+ * FocusGuard Blocker Service — v1.7.0
  *
  * BUG FIXES in this version:
  *   - FIX #1: OEM compatibility — Samsung/OPPO/Xiaomi settings package detection
  *   - FIX #2: Instagram reels detection — removed unreliable content description check
  *   - FIX #3: WhatsApp Channels — Redesigned to use Chat redirection and strict UI matching
+ *   - FIX #4: Google Docs Blocker — Re-routed web search panel block directly to Google Docs Home and eliminated typing lag
  */
 public class BlockerService extends AccessibilityService {
 
@@ -27,6 +28,7 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_WHATSAPP  = "com.whatsapp";
     private static final String PKG_YOUTUBE   = "com.google.android.youtube";
     private static final String PKG_INSTAGRAM = "com.instagram.android";
+    private static final String PKG_GOOGLE_DOCS = "com.google.android.apps.docs.editors.docs";
 
     private static final String OUR_PACKAGE   = "com.focusguard.app";
     private static final String SERVICE_LABEL = "Focus Guard";
@@ -104,6 +106,10 @@ public class BlockerService extends AccessibilityService {
                     && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
                 handleInstagram();
+            }
+        } else if (PKG_GOOGLE_DOCS.equals(pkgName)) {
+            if (prefManager.isGoogleDocsBlocked()) {
+                handleGoogleDocs(event, eventType);
             }
         }
     }
@@ -673,6 +679,227 @@ public class BlockerService extends AccessibilityService {
         } finally {
             root.recycle();
         }
+    }
+
+    // =========================================================================
+    // GOOGLE DOCS WEB SEARCH BLOCKING
+    // =========================================================================
+
+    private boolean isGoogleDocsWebSearchOpening = false;
+    private long googleDocsWebSearchClickTime = 0;
+    private long lastGoogleDocsBlockTime = 0;
+
+    private void kickOutToGoogleDocsHome() {
+        // Perform exactly two BACK actions to close the search panel and exit the editor to Google Docs Home
+        // without exiting the Google Docs application entirely.
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+            }
+        }, 150);
+    }
+
+    private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
+        long currentTime = System.currentTimeMillis();
+
+        // 1. Instantly block clicks on "From web"
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                String txt = getEventText(event).toLowerCase();
+                boolean clickedFromWeb = txt.contains("from web") || 
+                                         txt.contains("ওয়েব থেকে") || 
+                                         txt.contains("ওয়েব থেকে");
+                
+                if (!clickedFromWeb && isFromWebNodeOrChildren(source, 0)) {
+                    clickedFromWeb = true;
+                }
+
+                if (clickedFromWeb) {
+                    isGoogleDocsWebSearchOpening = true;
+                    googleDocsWebSearchClickTime = currentTime;
+                    
+                    kickOutToGoogleDocsHome();
+                    
+                    // Clear the opening flag after 300ms (no duplicate triggers)
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            isGoogleDocsWebSearchOpening = false;
+                        }
+                    }, 300);
+                }
+                source.recycle();
+            }
+        }
+
+        // 2. Block the Web Search screen if it somehow opens (zero-latency check)
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            
+            if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime >= 600)) {
+                isGoogleDocsWebSearchOpening = false;
+            }
+
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            try {
+                // Fast check using framework method (executed instantly in C++ by OS)
+                boolean isSearchUI = !root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty();
+                
+                // Deep recursive check ONLY on WINDOW_STATE_CHANGED (to ensure typing is perfectly smooth/zero lag!)
+                if (!isSearchUI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    isSearchUI = checkDocsSearchDeep(root);
+                }
+
+                if (isSearchUI) {
+                    long now = System.currentTimeMillis();
+                    // Set a higher cooldown (1500ms) to ensure exactly one kick-out trigger executes
+                    if (now - lastGoogleDocsBlockTime > 1500) {
+                        lastGoogleDocsBlockTime = now;
+                        kickOutToGoogleDocsHome();
+                    }
+                }
+            } finally {
+                root.recycle();
+            }
+        }
+    }
+
+    private boolean isWebSearchExplicit = false;
+    private boolean hasSearchIcon = false;
+    private boolean hasFormattingBar = false;
+    private boolean hasWebDomain = false;
+    private boolean hasLeftArrow = false;
+
+    private boolean checkDocsSearchDeep(AccessibilityNodeInfo root) {
+        isWebSearchExplicit = false;
+        hasSearchIcon = false;
+        hasFormattingBar = false;
+        hasWebDomain = false;
+        hasLeftArrow = false;
+        
+        scanDocsUI(root);
+        
+        if (isWebSearchExplicit) return true;
+        
+        // If we are in the editor (formatting bar visible) AND we see a search icon or web domains
+        if (hasFormattingBar && (hasSearchIcon || hasWebDomain)) {
+            return true;
+        }
+        
+        // Even if keyboard hides formatting bar, if we see search icon AND web domains, it's the web search
+        if (hasSearchIcon && hasWebDomain) {
+            return true;
+        }
+        
+        // If we see the Left Arrow AND Search Icon (or Clear icon), block it instantly.
+        // This covers the search suggestions/history loophole when formatting bar is hidden.
+        if (hasLeftArrow && hasSearchIcon) {
+            return true;
+        }
+        
+        // If we see the Left Arrow AND Web Domains (e.g. results loaded but no Search Icon), block it.
+        if (hasLeftArrow && hasWebDomain) {
+            return true;
+        }
+        
+        // If we see the Left Arrow AND Search Icon AND we are in the editor, block it.
+        if (hasLeftArrow && hasSearchIcon && hasFormattingBar) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    private void scanDocsUI(AccessibilityNodeInfo node) {
+        if (node == null) return;
+        
+        CharSequence txt = node.getText();
+        if (txt != null) {
+            String s = txt.toString().toLowerCase();
+            if (s.contains("search your docs and the web") ||
+                s.contains("search directly in docs") ||
+                s.contains("find images, facts and text") ||
+                s.contains("আপনার ডক্স এবং ওয়েব") ||
+                s.contains("আপনার দস্তাবেজ এবং ওয়েব") ||
+                s.contains("search images") ||
+                s.contains("ছবি খুঁজুন")) {
+                isWebSearchExplicit = true;
+            }
+            if (s.startsWith("www.") || s.contains(".com") || s.contains(".org") || s.contains(".net") || s.contains("wikipedia.org")) {
+                // Ignore if it's the main editable document text which might be huge
+                if (s.length() < 100 && !node.isEditable()) {
+                    hasWebDomain = true;
+                }
+            }
+        }
+        
+        CharSequence desc = node.getContentDescription();
+        if (desc != null) {
+            String s = desc.toString().toLowerCase();
+            if (s.contains("search your docs and the web") ||
+                s.contains("search directly in docs") ||
+                s.contains("find images, facts and text") ||
+                s.contains("আপনার ডক্স এবং ওয়েব") ||
+                s.contains("আপনার দস্তাবেজ এবং ওয়েব") ||
+                s.contains("search images") ||
+                s.contains("ছবি খুঁজুন")) {
+                isWebSearchExplicit = true;
+            }
+            if (s.equals("search") || s.equals("অনুসন্ধান") || s.equals("সার্চ") || s.equals("search web") || s.equals("ওয়েবে খুঁজুন") || s.equals("search query") || s.equals("clear query")) {
+                hasSearchIcon = true;
+            }
+            if (s.equals("bold") || s.equals("বোল্ড") || s.equals("italic") || s.equals("ইটালিক") || s.equals("underline") || s.equals("আন্ডারলাইন")) {
+                hasFormattingBar = true;
+            }
+            if (s.equals("navigate up") || s.equals("close") || s.equals("উপরে নেভিগেট করুন") || s.equals("বন্ধ করুন") || s.equals("ফিরে যান")) {
+                hasLeftArrow = true;
+            }
+        }
+        
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            scanDocsUI(child);
+            if (child != null) child.recycle();
+            
+            if (isWebSearchExplicit) return; // Fast exit
+        }
+    }
+
+    private boolean isFromWebNodeOrChildren(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 3) return false;
+        
+        CharSequence txt = node.getText();
+        if (txt != null) {
+            String s = txt.toString().toLowerCase();
+            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে")) return true;
+        }
+        
+        CharSequence desc = node.getContentDescription();
+        if (desc != null) {
+            String s = desc.toString().toLowerCase();
+            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে")) return true;
+        }
+        
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (isFromWebNodeOrChildren(child, depth + 1)) {
+                if (child != null) child.recycle();
+                return true;
+            }
+            if (child != null) child.recycle();
+        }
+        
+        return false;
     }
 
     // =========================================================================

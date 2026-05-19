@@ -50,11 +50,10 @@ jobs:
           ## FocusGuard Release ${{ steps.version.outputs.VERSION }}
           **Build Date:** ${{ steps.version.outputs.DATE }}
 
-          ### What's included in v1.6.2 (WhatsApp Stability):
-          - 🛡️ **WhatsApp Fix:** Resolved issue where keywords like "channel/update" prevented text selection in chats.
-          - 🛡️ **System Core Protection:** Hardened Device Admin and Accessibility protection.
-          - 🚀 **Performance:** Optimized sub-0.1s block response for WhatsApp, YouTube, and Instagram.
-          - ✅ **Bug Fixes:** Improved node matching logic for better compatibility.
+          ### What's included in this release:
+          - 📝 **Google Docs Blocker (v1.7.0):** Instantly kicks you out to the Google Docs Home screen (file list) upon tapping "From Web".
+          - ⚡ **Zero-Lag Typing:** Rewrote the background accessibility service checking logic to eliminate recursive node traversals during typing, providing 100% smooth typing and editing.
+          - 🛡️ **WhatsApp & Core Security:** Sub-0.1s instant block response for WhatsApp Channels/Updates, Instagram Reels, YouTube Shorts, Device Admin, and Accessibility Settings.
 
           ### How to install:
           1. Download `app-debug.apk` below
