@@ -686,6 +686,7 @@ public class BlockerService extends AccessibilityService {
     // =========================================================================
 
     private long lastGoogleDocsBlockTime = 0;
+    private long lastDeepScanTime = 0;
 
     /**
      * Ultra-fast kickout: 3 rapid BACKs with 30ms gaps to reliably
@@ -828,8 +829,10 @@ public class BlockerService extends AccessibilityService {
                     return;
                 }
 
-                // Check 4: Deep scan ONLY on window state change (avoids typing lag)
-                if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                // Check 4: Deep scan on BOTH event types (throttled to 500ms to avoid typing lag)
+                long scanNow = System.currentTimeMillis();
+                if (scanNow - lastDeepScanTime > 500) {
+                    lastDeepScanTime = scanNow;
                     if (checkDocsSearchDeep(root)) {
                         doGoogleDocsBlock();
                     }
