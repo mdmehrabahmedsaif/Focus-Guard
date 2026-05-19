@@ -855,6 +855,17 @@ public class BlockerService extends AccessibilityService {
                 }
                 source.recycle();
             }
+
+            // BURST SCAN: If Image panel watchdog is active and a click happened,
+            // the user may have tapped "From web" but the event text/source didn't
+            // contain it (common on many OEMs). Start ultra-rapid polling to catch
+            // the search page the INSTANT it appears (~20-40ms from click).
+            if (isImagePanelWatchdogActive && eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                mainHandler.post(watchdogRunnable); // Check NOW (0ms)
+                for (int i = 1; i <= 25; i++) {
+                    mainHandler.postDelayed(watchdogRunnable, i * 20L); // Every 20ms for 500ms
+                }
+            }
         }
 
         // ===== WATCHDOG ACTIVATION: When Image panel opens =====
@@ -918,6 +929,15 @@ public class BlockerService extends AccessibilityService {
                     if (checkDocsSearchDeep(root)) {
                         stopImagePanelWatchdog();
                         doGoogleDocsBlock();
+                        return;
+                    }
+                }
+
+                // Check 5: Activate watchdog if Image panel is open (tree-based, works on ALL devices)
+                if (!isImagePanelWatchdogActive) {
+                    if (!root.findAccessibilityNodeInfosByText("From web").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty()) {
+                        startImagePanelWatchdog();
                     }
                 }
             } finally {
