@@ -699,13 +699,13 @@ public class BlockerService extends AccessibilityService {
             public void run() {
                 performGlobalAction(GLOBAL_ACTION_BACK);
             }
-        }, 50);
+        }, 30);
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 performGlobalAction(GLOBAL_ACTION_BACK);
             }
-        }, 150);
+        }, 80);
     }
 
     /**
@@ -714,7 +714,7 @@ public class BlockerService extends AccessibilityService {
      */
     private void doGoogleDocsBlock() {
         long now = System.currentTimeMillis();
-        if (now - lastGoogleDocsBlockTime < 300) return;
+        if (now - lastGoogleDocsBlockTime < 100) return;
         lastGoogleDocsBlockTime = now;
         kickOutToGoogleDocsHome();
     }
@@ -794,7 +794,7 @@ public class BlockerService extends AccessibilityService {
             eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
 
             long now = System.currentTimeMillis();
-            if (now - lastGoogleDocsBlockTime < 300) return;
+            if (now - lastGoogleDocsBlockTime < 100) return;
 
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
@@ -829,9 +829,9 @@ public class BlockerService extends AccessibilityService {
                     return;
                 }
 
-                // Check 4: Deep scan on BOTH event types (throttled to 500ms to avoid typing lag)
+                // Check 4: Deep scan on BOTH event types (throttled to 150ms for speed)
                 long scanNow = System.currentTimeMillis();
-                if (scanNow - lastDeepScanTime > 500) {
+                if (scanNow - lastDeepScanTime > 150) {
                     lastDeepScanTime = scanNow;
                     if (checkDocsSearchDeep(root)) {
                         doGoogleDocsBlock();
