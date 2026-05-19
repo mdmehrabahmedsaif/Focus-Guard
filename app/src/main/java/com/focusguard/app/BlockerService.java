@@ -808,12 +808,9 @@ public class BlockerService extends AccessibilityService {
                     doGoogleDocsBlock();
                     return;
                 }
-                // Check if Image panel is still open (has "From web")
-                if (root.findAccessibilityNodeInfosByText("From web").isEmpty() &&
-                    root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty()) {
-                    // Panel closed, stop watching
-                    isImagePanelWatchdogActive = false;
-                }
+                // DO NOT stop watchdog here. If the user clicked "From web", the UI transitions
+                // to the search page, so "From web" will disappear. We WANT the watchdog to keep
+                // polling while the new page loads! It will naturally time out after 3 seconds.
             } finally {
                 root.recycle();
             }
@@ -864,11 +861,9 @@ public class BlockerService extends AccessibilityService {
                         doGoogleDocsBlock();
                         return;
                     }
-                    // If Image panel closed (user pressed back arrow), stop watchdog
-                    if (root.findAccessibilityNodeInfosByText("From web").isEmpty() &&
-                        root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty()) {
-                        stopImagePanelWatchdog();
-                    }
+                    // DO NOT check for "From web" and stop watchdog here!
+                    // This is a NEW window. "From web" will naturally be missing.
+                    // If we stop it, we kill the burst scan right when the WebView is loading!
                 } finally {
                     root.recycle();
                 }
