@@ -10,12 +10,13 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.List;
 
 /**
- * FocusGuard Blocker Service — v1.6.2
+ * FocusGuard Blocker Service — v1.7.0
  *
  * BUG FIXES in this version:
  *   - FIX #1: OEM compatibility — Samsung/OPPO/Xiaomi settings package detection
  *   - FIX #2: Instagram reels detection — removed unreliable content description check
  *   - FIX #3: WhatsApp Channels — Redesigned to use Chat redirection and strict UI matching
+ *   - FIX #4: Google Docs Blocker — Re-routed web search panel block directly to Google Docs Home and eliminated typing lag
  */
 public class BlockerService extends AccessibilityService {
 
@@ -688,6 +689,20 @@ public class BlockerService extends AccessibilityService {
     private long googleDocsWebSearchClickTime = 0;
     private long lastGoogleDocsBlockTime = 0;
 
+    private void kickOutToGoogleDocsHome() {
+        try {
+            Intent intent = getPackageManager().getLaunchIntentForPackage(PKG_GOOGLE_DOCS);
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(intent);
+            } else {
+                performGlobalAction(GLOBAL_ACTION_HOME);
+            }
+        } catch (Exception e) {
+            performGlobalAction(GLOBAL_ACTION_HOME);
+        }
+    }
+
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
         long currentTime = System.currentTimeMillis();
 
@@ -708,15 +723,15 @@ public class BlockerService extends AccessibilityService {
                     isGoogleDocsWebSearchOpening = true;
                     googleDocsWebSearchClickTime = currentTime;
                     
-                    performGlobalAction(GLOBAL_ACTION_BACK);
+                    kickOutToGoogleDocsHome();
                     
-                    // Fire a delayed BACK action to ensure the newly opening pane is killed
-                    // if the initial BACK action was swallowed by the bottom sheet transition
+                    // Fire a delayed action to ensure the newly opening pane is killed
+                    // if the initial activity start was swallowed or delayed by transitions
                     mainHandler.postDelayed(new Runnable() {
                         @Override
                         public void run() {
                             if (isGoogleDocsWebSearchOpening) {
-                                performGlobalAction(GLOBAL_ACTION_BACK);
+                                kickOutToGoogleDocsHome();
                                 isGoogleDocsWebSearchOpening = false;
                             }
                         }
@@ -730,8 +745,6 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
-            // Remove the aggressive 600ms spam block to prevent exiting the entire application.
-            // We now rely on the 150ms click delay and the 400ms-cooldown-secured isSearchUI detection.
             if (isGoogleDocsWebSearchOpening && (currentTime - googleDocsWebSearchClickTime >= 600)) {
                 isGoogleDocsWebSearchOpening = false;
             }
@@ -739,15 +752,17 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // Fast check using framework method
+                // Fast check using framework method (executed instantly in C++ by OS)
                 boolean isSearchUI = !root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
                                      !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty() ||
                                      !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
                                      !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
-                                     !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty();
+                                     !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
+                                     !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty();
                 
-                // Deep recursive check if fast check missed it (very common for hints in EditTexts)
-                if (!isSearchUI) {
+                // Deep recursive check ONLY on WINDOW_STATE_CHANGED (to ensure typing is perfectly smooth/zero lag!)
+                if (!isSearchUI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                     isSearchUI = checkDocsSearchDeep(root);
                 }
 
@@ -755,13 +770,13 @@ public class BlockerService extends AccessibilityService {
                     long now = System.currentTimeMillis();
                     if (now - lastGoogleDocsBlockTime > 400) {
                         lastGoogleDocsBlockTime = now;
-                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        kickOutToGoogleDocsHome();
                         
-                        // Post a delayed BACK to ensure it closes completely even if animations are running
+                        // Post a delayed action to ensure it closes completely even if animations are running
                         mainHandler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
-                                performGlobalAction(GLOBAL_ACTION_BACK);
+                                kickOutToGoogleDocsHome();
                             }
                         }, 100);
                     }
