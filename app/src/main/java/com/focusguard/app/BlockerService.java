@@ -689,24 +689,56 @@ public class BlockerService extends AccessibilityService {
     private long lastDeepScanTime = 0;
 
     private void kickOutToGoogleDocsHome() {
-        // The user doesn't want to be kicked to the home screen, they just want the browser closed.
-        // A single BACK action destroys the animating browser fragment and returns them to the document perfectly.
+        // A single BACK action destroys the animating browser fragment and returns to the document.
         performGlobalAction(GLOBAL_ACTION_BACK);
     }
 
     /**
-     * Fires the block with a 50ms cooldown to prevent duplicate triggers.
+     * Fires the block with a 200ms cooldown to prevent duplicate triggers.
      */
     private void doGoogleDocsBlock() {
         long now = System.currentTimeMillis();
-        // 1000ms cooldown to prevent double BACK actions which might close the document
-        if (now - lastGoogleDocsBlockTime < 1000) return;
+        if (now - lastGoogleDocsBlockTime < 200) return;
         lastGoogleDocsBlockTime = now;
         kickOutToGoogleDocsHome();
     }
 
     /**
-     * Instantly dismisses the Image panel. (Now triggers full kick-out to home)
+     * When user clicks "From web", we need to fire BACK multiple times:
+     * 1st BACK: Closes the Image panel (already closing from the click)
+     * 2nd BACK (after 80ms): Kills the browser fragment that's trying to open
+     * 3rd BACK (after 160ms): Safety net in case the fragment wasn't ready yet
+     * This guarantees the browser NEVER appears on screen.
+     */
+    private void doFromWebClickBlock() {
+        long now = System.currentTimeMillis();
+        if (now - lastGoogleDocsBlockTime < 500) return;
+        lastGoogleDocsBlockTime = now;
+        // Immediate BACK to close the panel
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        // Delayed BACKs to kill the browser fragment as it tries to open
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+            }
+        }, 80);
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+            }
+        }, 200);
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+            }
+        }, 400);
+    }
+
+    /**
+     * Instantly dismisses the Image panel.
      */
     private void dismissImagePanel() {
         doGoogleDocsBlock();
@@ -873,12 +905,37 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // ===== BURST SCAN: Ultra-rapid polling on click =====
+        // ===== FAST PATH #1: "From web" click interception =====
+        // When user clicks "From web", fire rapid BACK actions to kill the browser
+        // before it can even start rendering. This makes the button appear "dead".
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            // ZERO-IPC check: event text
+            String eventTxt = getEventText(event).toLowerCase();
+            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
+                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ করুন")) {
+                stopImagePanelWatchdog();
+                doFromWebClickBlock();
+                return;
+            }
 
-        if (isImagePanelWatchdogActive && eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            mainHandler.post(watchdogRunnable); // Check NOW (0ms)
-            for (int i = 1; i <= 30; i++) {
-                mainHandler.postDelayed(watchdogRunnable, i * 10L);
+            // 1-IPC fallback: check source node tree
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                if (isFromWebNodeOrChildren(source, 0)) {
+                    source.recycle();
+                    stopImagePanelWatchdog();
+                    doFromWebClickBlock();
+                    return;
+                }
+                source.recycle();
+            }
+
+            // BURST SCAN: Ultra-rapid polling every 10ms for 300ms after any click
+            if (isImagePanelWatchdogActive) {
+                mainHandler.post(watchdogRunnable); // Check NOW (0ms)
+                for (int i = 1; i <= 30; i++) {
+                    mainHandler.postDelayed(watchdogRunnable, i * 10L);
+                }
             }
         }
 
