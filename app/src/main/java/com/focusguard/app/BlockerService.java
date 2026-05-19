@@ -755,6 +755,32 @@ public class BlockerService extends AccessibilityService {
                                      !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
                                      !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty();
                 
+                // LOOPHOLE PATCH: If user types/searches something, the default hint texts disappear.
+                // We check for the presence of the Left arrow/Back button AND the Search/Clear magnifying icon.
+                if (!isSearchUI) {
+                    boolean hasLeftArrow = !root.findAccessibilityNodeInfosByText("Navigate up").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("উপরে নেভিগেট করুন").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("close").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("বন্ধ করুন").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("fewer options").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty();
+
+                    boolean hasSearchIcon = !root.findAccessibilityNodeInfosByText("Search").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("Clear").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("Clear text").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("অনুসন্ধান").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("সার্চ").isEmpty() ||
+                                            !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty();
+
+                    if (hasLeftArrow && hasSearchIcon) {
+                        isSearchUI = true;
+                    }
+                }
+
                 // Deep recursive check ONLY on WINDOW_STATE_CHANGED (to ensure typing is perfectly smooth/zero lag!)
                 if (!isSearchUI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                     isSearchUI = checkDocsSearchDeep(root);

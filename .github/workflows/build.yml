@@ -51,8 +51,8 @@ jobs:
           **Build Date:** ${{ steps.version.outputs.DATE }}
 
           ### What's included in this release:
-          - 📝 **Google Docs Blocker (v1.7.0):** Instantly kicks you out to the Google Docs Home screen (file list) upon tapping "From Web".
-          - ⚡ **Zero-Lag Typing:** Rewrote the background accessibility service checking logic to eliminate recursive node traversals during typing, providing 100% smooth typing and editing.
+          - 📝 **Google Docs Blocker (v1.7.2):** Instantly kicks you out to the Google Docs Home screen upon tapping "From Web" or searching/typing queries (patched loophole using Left arrow + Search icon layout signature).
+          - ⚡ **Zero-Lag Typing:** Fully optimized accessibility service that runs native OS checks to guarantee 100% smooth, lag-free document editing.
           - 🛡️ **WhatsApp & Core Security:** Sub-0.1s instant block response for WhatsApp Channels/Updates, Instagram Reels, YouTube Shorts, Device Admin, and Accessibility Settings.
 
           ### How to install:
