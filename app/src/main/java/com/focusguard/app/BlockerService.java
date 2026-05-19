@@ -986,13 +986,19 @@ public class BlockerService extends AccessibilityService {
                 // The search page has a "Navigate up" left arrow AND a "Search" magnifying glass.
                 // This catches the page even when specific hint text is gone (user has typed text).
                 boolean hasNavUp = !root.findAccessibilityNodeInfosByText("Navigate up").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("Close").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("বন্ধ করুন").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("উপরে নেভিগেট করুন").isEmpty() ||
                                    !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty();
                 if (hasNavUp) {
                     // Check for magnifying glass / search icon
                     boolean hasSearchBtn = !root.findAccessibilityNodeInfosByText("Search").isEmpty() ||
                                            !root.findAccessibilityNodeInfosByText("অনুসন্ধান").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("সার্চ").isEmpty();
+                                           !root.findAccessibilityNodeInfosByText("সার্চ").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("Clear query").isEmpty();
                     if (hasSearchBtn) {
                         // Confirm we are NOT in normal editor (no formatting bar)
                         boolean hasFormatBar = !root.findAccessibilityNodeInfosByText("Bold").isEmpty() ||
