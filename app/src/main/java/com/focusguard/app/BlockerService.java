@@ -958,10 +958,42 @@ public class BlockerService extends AccessibilityService {
                     return;
                 }
 
-                // Check 4: Deep scan (throttled to 150ms)
-                long scanNow = System.currentTimeMillis();
-                if (scanNow - lastDeepScanTime > 150) {
-                    lastDeepScanTime = scanNow;
+                // Check 3.5: FAST search bar pattern detection (← + 🔍)
+                // The search page has a "Navigate up" left arrow AND a "Search" magnifying glass.
+                // This catches the page even when specific hint text is gone (user has typed text).
+                boolean hasNavUp = !root.findAccessibilityNodeInfosByText("Navigate up").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("উপরে নেভিগেট করুন").isEmpty() ||
+                                   !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty();
+                if (hasNavUp) {
+                    // Check for magnifying glass / search icon
+                    boolean hasSearchBtn = !root.findAccessibilityNodeInfosByText("Search").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("অনুসন্ধান").isEmpty() ||
+                                           !root.findAccessibilityNodeInfosByText("সার্চ").isEmpty();
+                    if (hasSearchBtn) {
+                        // Confirm we are NOT in normal editor (no formatting bar)
+                        boolean hasFormatBar = !root.findAccessibilityNodeInfosByText("Bold").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("বোল্ড").isEmpty();
+                        if (!hasFormatBar) {
+                            stopImagePanelWatchdog();
+                            doGoogleDocsBlock();
+                            return;
+                        }
+                    }
+                }
+
+                // Check 4: Deep scan — NO throttle for WINDOW_STATE_CHANGED (new page),
+                // 30ms throttle for CONTENT_CHANGED (rapid updates)
+                boolean doDeepScan = false;
+                if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    doDeepScan = true; // Always scan on new window
+                } else {
+                    long scanNow = System.currentTimeMillis();
+                    if (scanNow - lastDeepScanTime > 30) {
+                        doDeepScan = true;
+                    }
+                }
+                if (doDeepScan) {
+                    lastDeepScanTime = System.currentTimeMillis();
                     if (checkDocsSearchDeep(root)) {
                         stopImagePanelWatchdog();
                         doGoogleDocsBlock();
@@ -1062,7 +1094,9 @@ public class BlockerService extends AccessibilityService {
             scanDocsUI(child);
             if (child != null) child.recycle();
             
-            if (isWebSearchExplicit) return; // Fast exit
+            // Fast exit: stop scanning once we have enough signals
+            if (isWebSearchExplicit) return;
+            if (hasLeftArrow && hasSearchIcon) return;
         }
     }
 
