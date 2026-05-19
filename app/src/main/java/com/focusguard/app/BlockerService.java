@@ -701,7 +701,20 @@ public class BlockerService extends AccessibilityService {
         }, 150);
     }
 
-    private boolean detectGoogleDocsSearchUI(AccessibilityNodeInfo root) {
+    private boolean detectGoogleDocsMainSearchUI(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+
+        // Check for specific document search hints
+        boolean isMainSearch = !root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("Search your docs").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
+                               !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty();
+                               
+        return isMainSearch;
+    }
+
+    private boolean detectGoogleDocsWebSearchUI(AccessibilityNodeInfo root) {
         if (root == null) return false;
 
         // 1. Screen 3 Check (Image Preview): "Insert" button at top-right + copyright/URL footer
@@ -730,6 +743,16 @@ public class BlockerService extends AccessibilityService {
                                !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty();
 
         if (hasLeftArrow) {
+            // Check if it's the Web Image Search screen
+            boolean isWebSearchHint = !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
+                                      !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
+                                      !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty() ||
+                                      !root.findAccessibilityNodeInfosByText("ছবি অনুসন্ধান").isEmpty();
+            
+            if (isWebSearchHint) {
+                return true;
+            }
+
             // Search / Magnifying Glass icon or Clear text button is present
             boolean hasSearchIcon = !root.findAccessibilityNodeInfosByText("Search").isEmpty() ||
                                     !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
@@ -758,8 +781,10 @@ public class BlockerService extends AccessibilityService {
                     return true; // Screen 2 (Image Detail) detected!
                 }
 
-                // If it has Left Arrow + Search Icon but no Link Icon, it is Screen 1 (Search Screen)
-                return true; // Screen 1 (Search Results) detected!
+                // If it's not the Main Search UI, and has Left Arrow + Search Icon, it is Web Search (Screen 1)
+                if (!detectGoogleDocsMainSearchUI(root)) {
+                    return true; 
+                }
             }
         }
 
@@ -800,7 +825,7 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // 2. Block the Web Search screen if it somehow opens (zero-latency check)
+        // 2. Block the Web Search screen or Main Search screen if they open (zero-latency check)
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             
@@ -811,30 +836,40 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // Primary ultra-fast, zero-latency signature check (sub-1ms, zero lag!)
-                boolean isSearchUI = detectGoogleDocsSearchUI(root);
+                // A. Check Main Search UI first (document search screen)
+                boolean isMainSearch = detectGoogleDocsMainSearchUI(root);
+                if (isMainSearch) {
+                    long now = System.currentTimeMillis();
+                    // Extremely low cooldown (350ms) to ensure instant block within 0.01s
+                    if (now - lastGoogleDocsBlockTime > 350) {
+                        lastGoogleDocsBlockTime = now;
+                        // Single back press returns immediately to home screen within Google Docs!
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                    }
+                    return;
+                }
 
-                if (!isSearchUI) {
-                    // Fallback using framework method
-                    isSearchUI = !root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
-                                 !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty() ||
-                                 !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
-                                 !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
-                                 !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty() ||
-                                 !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
-                                 !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty();
+                // B. Check Web Search UI (Screen 1, 2, or 3)
+                boolean isWebSearch = detectGoogleDocsWebSearchUI(root);
+                
+                // Fallback using framework method
+                if (!isWebSearch) {
+                    isWebSearch = !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty();
                 }
                 
                 // Deep recursive fallback check ONLY on WINDOW_STATE_CHANGED (to ensure typing is perfectly smooth/zero lag!)
-                if (!isSearchUI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                    isSearchUI = checkDocsSearchDeep(root);
+                if (!isWebSearch && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    isWebSearch = checkDocsSearchDeep(root);
                 }
 
-                if (isSearchUI) {
+                if (isWebSearch) {
                     long now = System.currentTimeMillis();
-                    // Set a higher cooldown (1500ms) to ensure exactly one kick-out trigger executes
-                    if (now - lastGoogleDocsBlockTime > 1500) {
+                    // Set a higher cooldown (1000ms) to ensure exactly one kick-out trigger executes
+                    if (now - lastGoogleDocsBlockTime > 1000) {
                         lastGoogleDocsBlockTime = now;
+                        // Two back presses exits document editor to Google Docs Home!
                         kickOutToGoogleDocsHome();
                     }
                 }
