@@ -848,6 +848,33 @@ public class BlockerService extends AccessibilityService {
             return;
         }
 
+        // ===== PRIORITY FAST-TRACK: Watchdog active + new window =====
+        // When Image panel was showing (watchdog active) and a NEW window opens
+        // in Google Docs, it's almost certainly the search page.
+        // "From photos"/"From camera" open EXTERNAL apps (different package),
+        // so they never trigger WINDOW_STATE_CHANGED in Google Docs.
+        // Skip ALL expensive findAccessibilityNodeInfosByText IPC calls (~18 calls
+        // = ~150ms on old devices) and go STRAIGHT to single-pass deep scan.
+        if (isImagePanelWatchdogActive && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    if (checkDocsSearchDeep(root)) {
+                        stopImagePanelWatchdog();
+                        doGoogleDocsBlock();
+                        return;
+                    }
+                    // If Image panel closed (user pressed back arrow), stop watchdog
+                    if (root.findAccessibilityNodeInfosByText("From web").isEmpty() &&
+                        root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty()) {
+                        stopImagePanelWatchdog();
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+        }
+
         // ===== INSTANT DISMISS: "From web" touch/hover/focus detection =====
         // When Image panel is open and content changes, check if the changed
         // view IS the "From web" row (touch-down ripple triggers content change).
@@ -892,14 +919,11 @@ public class BlockerService extends AccessibilityService {
                 source.recycle();
             }
 
-            // BURST SCAN: If Image panel watchdog is active and a click happened,
-            // the user may have tapped "From web" but the event text/source didn't
-            // contain it (common on many OEMs). Start ultra-rapid polling to catch
-            // the search page the INSTANT it appears (~20-40ms from click).
+            // BURST SCAN: Ultra-rapid polling every 10ms for 300ms
             if (isImagePanelWatchdogActive && eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
                 mainHandler.post(watchdogRunnable); // Check NOW (0ms)
-                for (int i = 1; i <= 25; i++) {
-                    mainHandler.postDelayed(watchdogRunnable, i * 20L); // Every 20ms for 500ms
+                for (int i = 1; i <= 30; i++) {
+                    mainHandler.postDelayed(watchdogRunnable, i * 10L);
                 }
             }
         }
