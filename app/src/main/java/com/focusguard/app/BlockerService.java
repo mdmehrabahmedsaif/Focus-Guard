@@ -823,10 +823,13 @@ public class BlockerService extends AccessibilityService {
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
         // ===== ABSOLUTE ZERO-IPC WEBVIEW KICKOUT (<0.0001s) =====
         CharSequence evClass = event.getClassName();
-        if (evClass != null && evClass.toString().contains("WebView")) {
-            stopImagePanelWatchdog();
-            doGoogleDocsBlock();
-            return;
+        if (evClass != null) {
+            String clsStr = evClass.toString();
+            if (clsStr.contains("WebView") || clsStr.contains("WebSearch") || clsStr.contains("ExploreActivity")) {
+                stopImagePanelWatchdog();
+                doGoogleDocsBlock();
+                return;
+            }
         }
 
         // ===== 1-IPC WEBVIEW KICKOUT =====
@@ -887,7 +890,7 @@ public class BlockerService extends AccessibilityService {
                 if (isFromWebNodeOrChildren(source, 0)) {
                     source.recycle();
                     stopImagePanelWatchdog();
-                    dismissImagePanel();
+                    doGoogleDocsBlock();
                     return;
                 }
                 source.recycle();
@@ -904,9 +907,10 @@ public class BlockerService extends AccessibilityService {
 
             // ZERO-IPC check: event text
             String eventTxt = getEventText(event).toLowerCase();
-            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে")) {
+            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") || 
+                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ করুন")) {
                 stopImagePanelWatchdog();
-                dismissImagePanel();
+                doGoogleDocsBlock();
                 return;
             }
 
@@ -916,7 +920,7 @@ public class BlockerService extends AccessibilityService {
                 if (isFromWebNodeOrChildren(source, 0)) {
                     source.recycle();
                     stopImagePanelWatchdog();
-                    dismissImagePanel();
+                    doGoogleDocsBlock();
                     return;
                 }
                 source.recycle();
@@ -937,7 +941,8 @@ public class BlockerService extends AccessibilityService {
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
 
             String eventTxt = getEventText(event).toLowerCase();
-            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে")) {
+            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") ||
+                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ করুন")) {
                 startImagePanelWatchdog();
             }
         }
@@ -1019,14 +1024,13 @@ public class BlockerService extends AccessibilityService {
                     }
                 }
 
-                // Check 4: Deep scan — NO throttle for WINDOW_STATE_CHANGED (new page),
-                // 30ms throttle for CONTENT_CHANGED (rapid updates)
+                // Check 4: Deep scan — NO throttle if Watchdog is active, otherwise 30ms throttle
                 boolean doDeepScan = false;
                 if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                     doDeepScan = true; // Always scan on new window
                 } else {
                     long scanNow = System.currentTimeMillis();
-                    if (scanNow - lastDeepScanTime > 30) {
+                    if (isImagePanelWatchdogActive || (scanNow - lastDeepScanTime > 30)) {
                         doDeepScan = true;
                     }
                 }
@@ -1058,6 +1062,8 @@ public class BlockerService extends AccessibilityService {
     private boolean hasWebDomain = false;
     private boolean hasLeftArrow = false;
     private boolean hasWebView = false;
+    private boolean hasProgressBar = false;
+    private boolean hasEditText = false;
 
     private boolean checkDocsSearchDeep(AccessibilityNodeInfo root) {
         isWebSearchExplicit = false;
@@ -1066,6 +1072,8 @@ public class BlockerService extends AccessibilityService {
         hasWebDomain = false;
         hasLeftArrow = false;
         hasWebView = false;
+        hasProgressBar = false;
+        hasEditText = false;
         
         scanDocsUI(root);
         
@@ -1074,6 +1082,12 @@ public class BlockerService extends AccessibilityService {
         // If we see the Left Arrow AND a WebView inside Google Docs, it's the web search browser!
         // This is 100% accurate and blocks it instantly (sub-0.001s) before results even render.
         if (hasLeftArrow && hasWebView) {
+            return true;
+        }
+        
+        // If we see a Left Arrow, an EditText (search box), and a ProgressBar (the blue line),
+        // it is the web search loading its results. Block it instantly to hide the blue line!
+        if (hasLeftArrow && hasEditText && hasProgressBar) {
             return true;
         }
         
@@ -1105,9 +1119,12 @@ public class BlockerService extends AccessibilityService {
     private void scanDocsUI(AccessibilityNodeInfo node) {
         if (node == null) return;
         
-        // Detect WebView (the browser container)
-        if (node.getClassName() != null && node.getClassName().toString().contains("WebView")) {
-            hasWebView = true;
+        // Detect WebView, ProgressBar, and EditText
+        if (node.getClassName() != null) {
+            String cls = node.getClassName().toString();
+            if (cls.contains("WebView")) hasWebView = true;
+            if (cls.contains("ProgressBar")) hasProgressBar = true;
+            if (cls.contains("EditText") || cls.contains("AutoCompleteTextView")) hasEditText = true;
         }
         
         CharSequence txt = node.getText();
@@ -1160,18 +1177,20 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isFromWebNodeOrChildren(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > 3) return false;
+        if (node == null || depth > 10) return false;
         
         CharSequence txt = node.getText();
         if (txt != null) {
             String s = txt.toString().toLowerCase();
-            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে")) return true;
+            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
+                s.equals("explore") || s.equals("অন্বেষণ করুন")) return true;
         }
         
         CharSequence desc = node.getContentDescription();
         if (desc != null) {
             String s = desc.toString().toLowerCase();
-            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে")) return true;
+            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
+                s.equals("explore") || s.equals("অন্বেষণ করুন")) return true;
         }
         
         for (int i = 0; i < node.getChildCount(); i++) {
