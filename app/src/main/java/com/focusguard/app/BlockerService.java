@@ -689,7 +689,9 @@ public class BlockerService extends AccessibilityService {
     private long lastDeepScanTime = 0;
 
     private void kickOutToGoogleDocsHome() {
-        // Instant kick-out to home screen (sub-0.001s reaction)
+        // The absolute fastest kick-out: BACK + HOME combo
+        // BACK instantly destroys the animating browser fragment, HOME exits the app.
+        performGlobalAction(GLOBAL_ACTION_BACK);
         performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
@@ -704,13 +706,10 @@ public class BlockerService extends AccessibilityService {
     }
 
     /**
-     * Instantly dismisses the Image panel with a single BACK action.
+     * Instantly dismisses the Image panel. (Now triggers full kick-out to home)
      */
     private void dismissImagePanel() {
-        long now = System.currentTimeMillis();
-        if (now - lastGoogleDocsBlockTime < 100) return;
-        lastGoogleDocsBlockTime = now;
-        performGlobalAction(GLOBAL_ACTION_BACK);
+        doGoogleDocsBlock();
     }
 
     /**
@@ -822,6 +821,31 @@ public class BlockerService extends AccessibilityService {
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
+        // ===== ABSOLUTE ZERO-IPC WEBVIEW KICKOUT (<0.0001s) =====
+        CharSequence evClass = event.getClassName();
+        if (evClass != null && evClass.toString().contains("WebView")) {
+            stopImagePanelWatchdog();
+            doGoogleDocsBlock();
+            return;
+        }
+
+        // ===== 1-IPC WEBVIEW KICKOUT =====
+        // If a WebView is added or changes content, its source will be a WebView
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                CharSequence srcClass = source.getClassName();
+                if (srcClass != null && srcClass.toString().contains("WebView")) {
+                    source.recycle();
+                    stopImagePanelWatchdog();
+                    doGoogleDocsBlock();
+                    return;
+                }
+                source.recycle();
+            }
+        }
+
         // ===== ULTRA-FAST PATH #0: Event text pre-check (ZERO IPC, <0.001s) =====
         if (checkGoogleDocsEventText(event)) {
             stopImagePanelWatchdog();
