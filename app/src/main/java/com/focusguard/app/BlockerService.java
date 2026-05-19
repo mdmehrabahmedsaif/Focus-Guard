@@ -689,10 +689,9 @@ public class BlockerService extends AccessibilityService {
     private long lastDeepScanTime = 0;
 
     private void kickOutToGoogleDocsHome() {
-        // The absolute fastest kick-out: BACK + HOME combo
-        // BACK instantly destroys the animating browser fragment, HOME exits the app.
+        // The user doesn't want to be kicked to the home screen, they just want the browser closed.
+        // A single BACK action destroys the animating browser fragment and returns them to the document perfectly.
         performGlobalAction(GLOBAL_ACTION_BACK);
-        performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
     /**
@@ -700,7 +699,8 @@ public class BlockerService extends AccessibilityService {
      */
     private void doGoogleDocsBlock() {
         long now = System.currentTimeMillis();
-        if (now - lastGoogleDocsBlockTime < 50) return;
+        // 1000ms cooldown to prevent double BACK actions which might close the document
+        if (now - lastGoogleDocsBlockTime < 1000) return;
         lastGoogleDocsBlockTime = now;
         kickOutToGoogleDocsHome();
     }
@@ -873,37 +873,12 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // ===== FAST PATH #1: "From web" click detection =====
-        // Covers: explicit clicks ONLY.
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+        // ===== BURST SCAN: Ultra-rapid polling on click =====
 
-            // ZERO-IPC check: event text
-            String eventTxt = getEventText(event).toLowerCase();
-            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") || 
-                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ করুন")) {
-                stopImagePanelWatchdog();
-                doGoogleDocsBlock();
-                return;
-            }
-
-            // 1-IPC fallback: check source node tree
-            AccessibilityNodeInfo source = event.getSource();
-            if (source != null) {
-                if (isFromWebNodeOrChildren(source, 0)) {
-                    source.recycle();
-                    stopImagePanelWatchdog();
-                    doGoogleDocsBlock();
-                    return;
-                }
-                source.recycle();
-            }
-
-            // BURST SCAN: Ultra-rapid polling every 10ms for 300ms
-            if (isImagePanelWatchdogActive && eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-                mainHandler.post(watchdogRunnable); // Check NOW (0ms)
-                for (int i = 1; i <= 30; i++) {
-                    mainHandler.postDelayed(watchdogRunnable, i * 10L);
-                }
+        if (isImagePanelWatchdogActive && eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            mainHandler.post(watchdogRunnable); // Check NOW (0ms)
+            for (int i = 1; i <= 30; i++) {
+                mainHandler.postDelayed(watchdogRunnable, i * 10L);
             }
         }
 
