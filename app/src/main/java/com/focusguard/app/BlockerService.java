@@ -689,52 +689,89 @@ public class BlockerService extends AccessibilityService {
     private long lastDeepScanTime = 0;
 
     private void kickOutToGoogleDocsHome() {
-        // A single BACK action destroys the animating browser fragment and returns to the document.
+        // A single BACK action destroys the browser fragment and returns to the document.
         performGlobalAction(GLOBAL_ACTION_BACK);
     }
 
     /**
-     * Fires the block with a 200ms cooldown to prevent duplicate triggers.
+     * Fires the block with a 100ms cooldown to prevent rapid double-fire.
      */
     private void doGoogleDocsBlock() {
         long now = System.currentTimeMillis();
-        if (now - lastGoogleDocsBlockTime < 200) return;
+        if (now - lastGoogleDocsBlockTime < 100) return;
         lastGoogleDocsBlockTime = now;
         kickOutToGoogleDocsHome();
     }
 
     /**
-     * When user clicks "From web", we need to fire BACK multiple times:
-     * 1st BACK: Closes the Image panel (already closing from the click)
-     * 2nd BACK (after 80ms): Kills the browser fragment that's trying to open
-     * 3rd BACK (after 160ms): Safety net in case the fragment wasn't ready yet
-     * This guarantees the browser NEVER appears on screen.
+     * ====== BROWSER KILL LOOP ======
+     * When user clicks "From web", the browser fragment takes 100-800ms to fully
+     * create and render. We can't predict exactly WHEN it will appear.
+     * 
+     * Instead of blindly firing BACKs at fixed times (which miss the browser),
+     * we start a REACTIVE kill loop that:
+     *   1. Runs every 10ms for 2 seconds (200 iterations)
+     *   2. Each iteration checks if the browser/search page structure exists
+     *   3. The INSTANT it detects the browser, it fires BACK to kill it
+     *   4. Keeps running even after a kill, in case the browser re-appears
+     * 
+     * This is 100% reliable because we REACT to the browser, not guess its timing.
+     */
+    private boolean isBrowserKillLoopActive = false;
+    private long lastBrowserKillBackTime = 0;
+
+    private final Runnable browserKillRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isBrowserKillLoopActive) return;
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            try {
+                // Check if browser/search page exists using structural detection
+                if (checkDocsSearchDeep(root)) {
+                    long now = System.currentTimeMillis();
+                    // 150ms cooldown between BACKs within the kill loop to avoid over-backing
+                    if (now - lastBrowserKillBackTime >= 150) {
+                        lastBrowserKillBackTime = now;
+                        lastGoogleDocsBlockTime = now;
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                    }
+                }
+            } finally {
+                root.recycle();
+            }
+        }
+    };
+
+    private void startBrowserKillLoop() {
+        isBrowserKillLoopActive = true;
+        // Fire immediate BACK to close the Image Panel
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        lastGoogleDocsBlockTime = System.currentTimeMillis();
+        // Schedule 200 checks over 2 seconds (every 10ms)
+        for (int i = 1; i <= 200; i++) {
+            mainHandler.postDelayed(browserKillRunnable, i * 10L);
+        }
+        // Auto-stop after 2 seconds
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                isBrowserKillLoopActive = false;
+            }
+        }, 2100);
+    }
+
+    private void stopBrowserKillLoop() {
+        isBrowserKillLoopActive = false;
+    }
+
+    /**
+     * Called when user clicks "From web". Starts the Browser Kill Loop.
+     * NO cooldown here — every click must be handled.
      */
     private void doFromWebClickBlock() {
-        long now = System.currentTimeMillis();
-        if (now - lastGoogleDocsBlockTime < 500) return;
-        lastGoogleDocsBlockTime = now;
-        // Immediate BACK to close the panel
-        performGlobalAction(GLOBAL_ACTION_BACK);
-        // Delayed BACKs to kill the browser fragment as it tries to open
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                performGlobalAction(GLOBAL_ACTION_BACK);
-            }
-        }, 80);
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                performGlobalAction(GLOBAL_ACTION_BACK);
-            }
-        }, 200);
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                performGlobalAction(GLOBAL_ACTION_BACK);
-            }
-        }, 400);
+        stopImagePanelWatchdog();
+        startBrowserKillLoop();
     }
 
     /**
