@@ -1097,6 +1097,16 @@ public class BlockerService extends AccessibilityService {
         if (hasEditText && hasRecyclerView && hasSearchIcon && !hasHamburgerMenu && !hasFAB && !hasFormattingBar) {
             return true;
         }
+
+        // HEURISTIC 2: If the results are already loaded (hasWebDomain) and we are not in the main editor.
+        if (hasEditText && hasWebDomain && !hasFormattingBar) {
+            return true;
+        }
+
+        // HEURISTIC 3: If it's actively loading (hasProgressBar), has a search box, has a list, and is a secondary screen.
+        if (hasEditText && hasRecyclerView && hasProgressBar && !hasHamburgerMenu && !hasFAB && !hasFormattingBar) {
+            return true;
+        }
         
         return false;
     }
