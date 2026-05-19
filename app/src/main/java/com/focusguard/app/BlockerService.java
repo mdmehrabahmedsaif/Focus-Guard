@@ -764,14 +764,6 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
             try {
-                // PRE-CHECK: Is "From web" node focused/selected/accessibility-focused?
-                // This catches the moment user touches/hovers "From web" BEFORE click fires.
-                if (checkFromWebNodeInteracted(root)) {
-                    isImagePanelWatchdogActive = false;
-                    dismissImagePanel();
-                    return;
-                }
-
                 // Quick check: is the search page open?
                 if (!root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
                     !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
@@ -881,29 +873,9 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // ===== INSTANT DISMISS: "From web" touch/hover/focus detection =====
-        // When Image panel is open and content changes, check if the changed
-        // view IS the "From web" row (touch-down ripple triggers content change).
-        if (isImagePanelWatchdogActive && eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            AccessibilityNodeInfo source = event.getSource();
-            if (source != null) {
-                if (isFromWebNodeOrChildren(source, 0)) {
-                    source.recycle();
-                    stopImagePanelWatchdog();
-                    doGoogleDocsBlock();
-                    return;
-                }
-                source.recycle();
-            }
-        }
-
-        // ===== FAST PATH #1: "From web" interaction detection =====
-        // Covers: click, focus, selection, hover — any interaction with "From web" button
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
-            eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
-            eventType == AccessibilityEvent.TYPE_VIEW_SELECTED ||
-            eventType == AccessibilityEvent.TYPE_VIEW_HOVER_ENTER ||
-            eventType == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED) {
+        // ===== FAST PATH #1: "From web" click detection =====
+        // Covers: explicit clicks ONLY.
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
 
             // ZERO-IPC check: event text
             String eventTxt = getEventText(event).toLowerCase();
@@ -1223,37 +1195,7 @@ public class BlockerService extends AccessibilityService {
         return false;
     }
 
-    /**
-     * Checks if any "From web" node in the tree is focused, selected,
-     * or accessibility-focused — indicating the user is hovering/touching it.
-     */
-    private boolean checkFromWebNodeInteracted(AccessibilityNodeInfo root) {
-        List<AccessibilityNodeInfo> fromWebNodes = root.findAccessibilityNodeInfosByText("From web");
-        if (fromWebNodes.isEmpty()) {
-            fromWebNodes = root.findAccessibilityNodeInfosByText("ওয়েব থেকে");
-        }
-        boolean interacted = false;
-        for (AccessibilityNodeInfo fwNode : fromWebNodes) {
-            if (fwNode != null) {
-                if (fwNode.isFocused() || fwNode.isSelected() || fwNode.isAccessibilityFocused()) {
-                    interacted = true;
-                }
-                // Also check parent — some OEMs set state on the row container
-                if (!interacted) {
-                    AccessibilityNodeInfo parent = fwNode.getParent();
-                    if (parent != null) {
-                        if (parent.isFocused() || parent.isSelected() || parent.isAccessibilityFocused()) {
-                            interacted = true;
-                        }
-                        parent.recycle();
-                    }
-                }
-                fwNode.recycle();
-                if (interacted) return true;
-            }
-        }
-        return false;
-    }
+
 
     // =========================================================================
     // UTILITIES
