@@ -10,7 +10,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.List;
 
 /**
- * FocusGuard Blocker Service — v1.8.0
+ * FocusGuard Blocker Service — v1.8.1
  *
  * BUG FIXES in this version:
  *   - FIX #1: OEM compatibility — Samsung/OPPO/Xiaomi settings package detection
@@ -720,6 +720,16 @@ public class BlockerService extends AccessibilityService {
     }
 
     /**
+     * Instantly dismisses the Image panel with a single BACK action.
+     */
+    private void dismissImagePanel() {
+        long now = System.currentTimeMillis();
+        if (now - lastGoogleDocsBlockTime < 100) return;
+        lastGoogleDocsBlockTime = now;
+        performGlobalAction(GLOBAL_ACTION_BACK);
+    }
+
+    /**
      * ZERO-IPC event text pre-check. Reads text already present in the
      * AccessibilityEvent object — no Binder IPC, no tree traversal.
      * This is the fastest possible detection path (<0.001s).
@@ -831,16 +841,18 @@ public class BlockerService extends AccessibilityService {
         }
 
         // ===== FAST PATH #1: "From web" interaction detection =====
-        // Covers: click, focus, selection — any interaction with "From web" button
+        // Covers: click, focus, selection, hover — any interaction with "From web" button
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
             eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
-            eventType == AccessibilityEvent.TYPE_VIEW_SELECTED) {
+            eventType == AccessibilityEvent.TYPE_VIEW_SELECTED ||
+            eventType == AccessibilityEvent.TYPE_VIEW_HOVER_ENTER ||
+            eventType == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED) {
 
             // ZERO-IPC check: event text
             String eventTxt = getEventText(event).toLowerCase();
-            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে")) {
+            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে")) {
                 stopImagePanelWatchdog();
-                doGoogleDocsBlock();
+                dismissImagePanel();
                 return;
             }
 
@@ -850,7 +862,7 @@ public class BlockerService extends AccessibilityService {
                 if (isFromWebNodeOrChildren(source, 0)) {
                     source.recycle();
                     stopImagePanelWatchdog();
-                    doGoogleDocsBlock();
+                    dismissImagePanel();
                     return;
                 }
                 source.recycle();
