@@ -6,6 +6,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.WindowManager;
+import android.graphics.PixelFormat;
+import android.graphics.Color;
+import android.view.View;
+import android.graphics.Rect;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.widget.Toast;
 
 import java.util.List;
 
@@ -46,6 +54,9 @@ public class BlockerService extends AccessibilityService {
         }
     };
 
+    private View touchShieldView = null;
+    private Rect currentShieldRect = null;
+
     private PreferenceManager prefManager;
     private static BlockerService instance;
 
@@ -60,6 +71,7 @@ public class BlockerService extends AccessibilityService {
 
     @Override
     public boolean onUnbind(Intent intent) {
+        removeTouchShield();
         instance = null;
         return super.onUnbind(intent);
     }
@@ -77,6 +89,11 @@ public class BlockerService extends AccessibilityService {
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
+
+        // Remove touch shield if we leave Google Docs package
+        if (!isGoogleDocsPackage(pkgName)) {
+            removeTouchShield();
+        }
 
         int eventType = event.getEventType();
 
@@ -721,12 +738,8 @@ public class BlockerService extends AccessibilityService {
         if (force || !hasBlockedCurrentSearch) {
             hasBlockedCurrentSearch = true;
             
-            try {
-                Intent coverIntent = new Intent(this, BlockActivity.class);
-                coverIntent.putExtra("mode", "temp_cover");
-                coverIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-                startActivity(coverIntent);
-            } catch (Exception ignored) {}
+            // Show instant overlay (0.00s Zero-Flash) to completely cover transition
+            showInstantZeroFlashOverlay();
 
             kickOutToGoogleDocsHome();
             stopBrowserKillLoop();
@@ -817,13 +830,8 @@ public class BlockerService extends AccessibilityService {
         // Reset block state for the new click session
         hasBlockedCurrentSearch = false;
 
-        // Launch Zero-Flash Cover Transition to immediately cover the screen
-        try {
-            Intent coverIntent = new Intent(this, BlockActivity.class);
-            coverIntent.putExtra("mode", "temp_cover");
-            coverIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-            startActivity(coverIntent);
-        } catch (Exception ignored) {}
+        // Show instant overlay (0.00s Zero-Flash) to completely cover transition
+        showInstantZeroFlashOverlay();
 
         // Send an immediate synchronous Back press to dismiss the bottom sheet / cancel transition
         performGlobalAction(GLOBAL_ACTION_BACK);
@@ -862,6 +870,19 @@ public class BlockerService extends AccessibilityService {
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType, String pkgName) {
+        // Proactively update the touch shield position and state
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    updateTouchShield(root);
+                } finally {
+                    root.recycle();
+                }
+            }
+        }
+
         // Reset block state when the user is back in the normal editor
         if (hasBlockedCurrentSearch) {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
@@ -1236,6 +1257,216 @@ public class BlockerService extends AccessibilityService {
     }
 
 
+
+    private View activeOverlayView = null;
+
+    private synchronized void showInstantZeroFlashOverlay() {
+        if (activeOverlayView != null) return;
+
+        try {
+            final WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+            if (wm == null) return;
+
+            final View overlayView = new View(this);
+            overlayView.setBackgroundColor(Color.BLACK);
+
+            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            );
+
+            wm.addView(overlayView, params);
+            activeOverlayView = overlayView;
+
+            mainHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    synchronized (BlockerService.this) {
+                        if (activeOverlayView == overlayView) {
+                            try {
+                                wm.removeView(overlayView);
+                            } catch (Exception ignored) {}
+                            activeOverlayView = null;
+                        }
+                    }
+                }
+            }, 350);
+
+        } catch (Exception ignored) {}
+    }
+
+    // =========================================================================
+    // TOUCH SHIELD OVERLAY INTERCEPTION
+    // =========================================================================
+
+    private AccessibilityNodeInfo findFromWebNode(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 10) return null;
+        
+        CharSequence txt = node.getText();
+        if (txt != null) {
+            String s = txt.toString().toLowerCase();
+            if (s.contains("from web") || 
+                s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
+                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
+                s.contains("वेब से") || 
+                s.contains("desde la web") || s.contains("de la web") ||
+                s.contains("da web")) {
+                return AccessibilityNodeInfo.obtain(node);
+            }
+        }
+        
+        CharSequence desc = node.getContentDescription();
+        if (desc != null) {
+            String s = desc.toString().toLowerCase();
+            if (s.contains("from web") || 
+                s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
+                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
+                s.contains("वेब से") || 
+                s.contains("desde la web") || s.contains("de la web") ||
+                s.contains("da web")) {
+                return AccessibilityNodeInfo.obtain(node);
+            }
+        }
+        
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                AccessibilityNodeInfo found = findFromWebNode(child, depth + 1);
+                child.recycle();
+                if (found != null) return found;
+            }
+        }
+        
+        return null;
+    }
+
+    private AccessibilityNodeInfo findClickableFromWebRow(AccessibilityNodeInfo root) {
+        AccessibilityNodeInfo textNode = findFromWebNode(root, 0);
+        if (textNode == null) return null;
+        
+        AccessibilityNodeInfo current = textNode;
+        int depth = 0;
+        while (current != null && depth < 3) {
+            if (current.isClickable()) {
+                if (current != textNode) {
+                    textNode.recycle();
+                }
+                return current;
+            }
+            AccessibilityNodeInfo parent = current.getParent();
+            if (current != textNode) {
+                current.recycle();
+            }
+            current = parent;
+            depth++;
+        }
+        return textNode;
+    }
+
+    private synchronized void updateTouchShield(AccessibilityNodeInfo root) {
+        AccessibilityNodeInfo targetNode = findClickableFromWebRow(root);
+        if (targetNode == null) {
+            removeTouchShield();
+            return;
+        }
+
+        Rect rect = new Rect();
+        targetNode.getBoundsInScreen(rect);
+        targetNode.recycle();
+
+        if (rect.isEmpty() || rect.width() <= 0 || rect.height() <= 0) {
+            removeTouchShield();
+            return;
+        }
+
+        if (touchShieldView != null) {
+            if (rect.equals(currentShieldRect)) {
+                return;
+            }
+            try {
+                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                if (wm != null) {
+                    WindowManager.LayoutParams params = (WindowManager.LayoutParams) touchShieldView.getLayoutParams();
+                    params.x = rect.left;
+                    params.y = rect.top;
+                    params.width = rect.width();
+                    params.height = rect.height();
+                    wm.updateViewLayout(touchShieldView, params);
+                    currentShieldRect = new Rect(rect);
+                    return;
+                }
+            } catch (Exception e) {
+                removeTouchShield();
+            }
+        }
+
+        try {
+            final WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+            if (wm == null) return;
+
+            final View shield = new View(this);
+            shield.setBackgroundColor(Color.argb(90, 120, 120, 120)); // Subtle grey overlay (opacity ~35%)
+
+            shield.setOnTouchListener(new View.OnTouchListener() {
+                private long lastTapTime = 0;
+                
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                        long now = System.currentTimeMillis();
+                        if (now - lastTapTime > 1500) {
+                            lastTapTime = now;
+                            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+                            
+                            performGlobalAction(GLOBAL_ACTION_BACK);
+                            
+                            Toast.makeText(BlockerService.this, 
+                                "FocusGuard: Web Search is blocked!", 
+                                Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                    return true;
+                }
+            });
+
+            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                rect.width(),
+                rect.height(),
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            );
+            params.gravity = Gravity.TOP | Gravity.LEFT;
+            params.x = rect.left;
+            params.y = rect.top;
+
+            wm.addView(shield, params);
+            touchShieldView = shield;
+            currentShieldRect = new Rect(rect);
+        } catch (Exception ignored) {}
+    }
+
+    private synchronized void removeTouchShield() {
+        if (touchShieldView != null) {
+            try {
+                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                if (wm != null) {
+                    wm.removeView(touchShieldView);
+                }
+            } catch (Exception ignored) {}
+            touchShieldView = null;
+            currentShieldRect = null;
+        }
+    }
 
     // =========================================================================
     // UTILITIES
