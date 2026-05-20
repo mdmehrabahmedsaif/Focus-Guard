@@ -80,19 +80,26 @@ public class BlockerService extends AccessibilityService {
 
         int eventType = event.getEventType();
 
-        // GLOBAL PROTECTION SCAN (Non-FocusGuard apps only)
+        // GLOBAL PROTECTION SCAN (Non-FocusGuard apps only - gated to Settings/Installer for maximum performance)
         if (!pkgName.equals(OUR_PACKAGE)) {
-            // Check Accessibility Protection
-            if (prefManager.isAccessibilityProtected()) {
-                handleAccessibilityProtection(event, eventType, pkgName);
+            boolean isSettingsPkg = pkgName.contains("settings");
+            boolean isInstallerPkg = pkgName.contains("packageinstaller") || pkgName.contains("installer");
+            
+            if (isSettingsPkg || isInstallerPkg) {
+                // Check Accessibility Protection
+                if (prefManager.isAccessibilityProtected()) {
+                    handleAccessibilityProtection(event, eventType, pkgName);
+                }
+                // Check Device Admin Protection
+                if (prefManager.isDeviceAdminProtected() && isSettingsPkg) {
+                    handleAdminProtection(event, eventType);
+                }
+                // Check Uninstall Protection
+                if (prefManager.isUninstallProtected()) {
+                    handleUninstallProtection(event, eventType);
+                }
             }
-            // Check Device Admin Protection
-            if (prefManager.isDeviceAdminProtected()) {
-                handleAdminProtection(event, eventType);
-            }
-            // Check Uninstall Protection
-            if (prefManager.isUninstallProtected()) {
-                handleUninstallProtection(event, eventType);
+        }
             }
         }
 
