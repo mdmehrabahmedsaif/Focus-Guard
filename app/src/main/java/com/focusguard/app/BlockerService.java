@@ -488,7 +488,6 @@ public class BlockerService extends AccessibilityService {
             // And either we have already successfully blocked/switched (hasBlockedCurrentWhatsApp == true)
             // Or a reasonable minimum transition duration has passed (e.g. 300ms) to ensure we don't dismiss early
             if (!isWhatsAppBlockedActive && (hasBlockedCurrentWhatsApp || elapsed > 300)) {
-                dismissOverlayWithAnimation();
                 isWhatsAppKillLoopActive = false;
                 return;
             }
@@ -499,7 +498,6 @@ public class BlockerService extends AccessibilityService {
                     long delay = (elapsed < 600) ? 5L : 100L;
                     mainHandler.postDelayed(this, delay);
                 } else {
-                    dismissOverlayWithAnimation();
                     isWhatsAppKillLoopActive = false;
                 }
             }
@@ -518,7 +516,6 @@ public class BlockerService extends AccessibilityService {
             public void run() {
                 if (isWhatsAppKillLoopActive) {
                     isWhatsAppKillLoopActive = false;
-                    dismissOverlayWithAnimation();
                 }
             }
         }, 1500);
@@ -527,14 +524,10 @@ public class BlockerService extends AccessibilityService {
     private void stopWhatsAppKillLoop() {
         isWhatsAppKillLoopActive = false;
         mainHandler.removeCallbacks(whatsAppKillRunnable);
-        dismissOverlayWithAnimation();
     }
 
     private void doWhatsAppBlock(int reason, AccessibilityNodeInfo root) {
         hasBlockedCurrentWhatsApp = true;
-        
-        // Show premium zero-flash overlay
-        showInstantZeroFlashOverlay();
         
         if (reason == 1) {
             // Tab Block - Try to switch to Chats.
@@ -603,7 +596,6 @@ public class BlockerService extends AccessibilityService {
                         // Restore the isInsideChatList check to prevent false positives inside chat messages
                         if (!isEditableNode(source) && !isInsideChatList(source)) {
                             hasBlockedCurrentWhatsApp = false;
-                            showInstantZeroFlashOverlay();
                             
                             // Do NOT perform GLOBAL_ACTION_BACK inside click event to avoid premature back press.
                             // Simply trigger the high-frequency watchdog loop to handle redirection or backing.
@@ -614,9 +606,8 @@ public class BlockerService extends AccessibilityService {
                         source.recycle();
                     }
                 } else {
-                    // Even if source is null, just show overlay and start watchdog, NEVER call BACK directly in click path
+                    // Even if source is null, just start watchdog, NEVER call BACK directly in click path
                     hasBlockedCurrentWhatsApp = false;
-                    showInstantZeroFlashOverlay();
                     startWhatsAppKillLoop();
                     return;
                 }
