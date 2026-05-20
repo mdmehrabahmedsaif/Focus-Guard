@@ -852,6 +852,52 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
+        // ===== FALLBACK WATCHDOG FOR SERVICE RESTART / MISSED CLICK =====
+        // Runs on window state change even if kill loop is inactive, using highly-specific structural matches
+        if (!isBrowserKillLoopActive && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            CharSequence evClass = event.getClassName();
+            if (evClass != null) {
+                String clsStr = evClass.toString();
+                // 1. If it is explicitly one of the search activities, block immediately
+                if (clsStr.contains("ExploreActivity") || clsStr.contains("WebSearch") || clsStr.contains("CustomTab")) {
+                    doGoogleDocsBlock(true);
+                    return;
+                }
+                
+                // 2. If it is a WebView, check if it contains highly-specific "From Web" search browser UI markers
+                if (clsStr.contains("WebView")) {
+                    AccessibilityNodeInfo root = getRootInActiveWindow();
+                    if (root != null) {
+                        try {
+                            isWebSearchExplicit = false;
+                            hasSearchIcon = false;
+                            hasFormattingBar = false;
+                            hasWebDomain = false;
+                            hasLeftArrow = false;
+                            hasWebView = false;
+                            hasProgressBar = false;
+                            hasEditText = false;
+                            hasHamburgerMenu = false;
+                            hasFAB = false;
+                            hasRecyclerView = false;
+                            
+                            scanDocsUI(root);
+                            
+                            // Highly specific match for "From Web" search browser inside Google Docs
+                            if (hasWebView && hasLeftArrow && !hasFormattingBar && !hasHamburgerMenu && !hasFAB) {
+                                if (isWebSearchExplicit || (hasEditText && hasSearchIcon) || (hasEditText && hasProgressBar)) {
+                                    doGoogleDocsBlock(true);
+                                    return;
+                                }
+                            }
+                        } finally {
+                            root.recycle();
+                        }
+                    }
+                }
+            }
+        }
+
         // ===== FAST PATH #1: "From web" click interception =====
         // When user clicks "From web", fire rapid BACK actions to kill the browser
         // before it can even start rendering. This makes the button appear "dead".
