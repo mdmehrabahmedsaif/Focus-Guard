@@ -68,6 +68,7 @@ public class BlockerService extends AccessibilityService {
         super.onServiceConnected();
         instance = this;
         prefManager = new PreferenceManager(this);
+        initGhostShield();
     }
 
     @Override
@@ -76,6 +77,7 @@ public class BlockerService extends AccessibilityService {
         stopBrowserKillLoop();
         stopWhatsAppKillLoop();
         stopGoogleAssistantKillLoop();
+        destroyGhostShield();
         instance = null;
         return super.onUnbind(intent);
     }
@@ -1563,55 +1565,105 @@ public class BlockerService extends AccessibilityService {
 
 
 
-    private View activeOverlayView = null;
+    private View ghostShieldView = null;
+    private WindowManager.LayoutParams ghostShieldParams = null;
+    private boolean isGhostShieldActive = false;
 
-    private synchronized void showInstantZeroFlashOverlay() {
-        if (activeOverlayView != null) return;
-
-        try {
-            final WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-            if (wm == null) return;
-
-            final View overlayView = new View(this);
-            overlayView.setBackgroundColor(Color.parseColor("#1A1A24")); // Premium Slate Grey
-            overlayView.setAlpha(1f);
-
-            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT
-            );
-
-            wm.addView(overlayView, params);
-            activeOverlayView = overlayView;
-
-        } catch (Exception ignored) {}
-    }
-
-    private synchronized void dismissOverlayWithAnimation() {
-        if (activeOverlayView == null) return;
-        final View overlay = activeOverlayView;
-        activeOverlayView = null; // Mark as null immediately to prevent double dismissal
-
+    private void initGhostShield() {
         mainHandler.post(new Runnable() {
             @Override
             public void run() {
                 try {
-                    overlay.animate()
+                    if (ghostShieldView != null) return;
+                    WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                    if (wm == null) return;
+
+                    ghostShieldView = new View(BlockerService.this);
+                    ghostShieldView.setBackgroundColor(Color.TRANSPARENT);
+
+                    ghostShieldParams = new WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        PixelFormat.TRANSLUCENT
+                    );
+
+                    wm.addView(ghostShieldView, ghostShieldParams);
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    private void destroyGhostShield() {
+        if (ghostShieldView != null) {
+            try {
+                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                if (wm != null) {
+                    wm.removeView(ghostShieldView);
+                }
+            } catch (Exception ignored) {}
+            ghostShieldView = null;
+            ghostShieldParams = null;
+        }
+    }
+
+    private synchronized void showInstantZeroFlashOverlay() {
+        if (ghostShieldView == null) {
+            initGhostShield();
+        }
+        isGhostShieldActive = true;
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (ghostShieldView == null || ghostShieldParams == null) return;
+                    
+                    ghostShieldView.animate().cancel();
+                    // Instantly paint the pre-allocated window with premium slate grey
+                    ghostShieldView.setBackgroundColor(Color.parseColor("#1A1A24"));
+                    ghostShieldView.setAlpha(1f);
+
+                    // Remove NOT_TOUCHABLE flag so it blocks all touch interactions instantly
+                    WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                    if (wm != null) {
+                        ghostShieldParams.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+                        wm.updateViewLayout(ghostShieldView, ghostShieldParams);
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    private synchronized void dismissOverlayWithAnimation() {
+        if (ghostShieldView == null || !isGhostShieldActive) return;
+        isGhostShieldActive = false;
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (ghostShieldView == null || ghostShieldParams == null) return;
+                    
+                    ghostShieldView.animate()
                         .alpha(0f)
                         .setDuration(150)
                         .withEndAction(new Runnable() {
                             @Override
                             public void run() {
                                 try {
-                                    WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-                                    if (wm != null) {
-                                        wm.removeView(overlay);
+                                    if (ghostShieldView != null && ghostShieldParams != null) {
+                                        // Reset back to completely transparent and restore touch-through flags
+                                        ghostShieldView.setBackgroundColor(Color.TRANSPARENT);
+                                        ghostShieldView.setAlpha(1f);
+                                        
+                                        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                                        if (wm != null) {
+                                            ghostShieldParams.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+                                            wm.updateViewLayout(ghostShieldView, ghostShieldParams);
+                                        }
                                     }
                                 } catch (Exception ignored) {}
                             }
@@ -1619,9 +1671,15 @@ public class BlockerService extends AccessibilityService {
                         .start();
                 } catch (Exception e) {
                     try {
-                        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-                        if (wm != null) {
-                            wm.removeView(overlay);
+                        if (ghostShieldView != null && ghostShieldParams != null) {
+                            ghostShieldView.setBackgroundColor(Color.TRANSPARENT);
+                            ghostShieldView.setAlpha(1f);
+                            
+                            WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                            if (wm != null) {
+                                ghostShieldParams.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+                                wm.updateViewLayout(ghostShieldView, ghostShieldParams);
+                            }
                         }
                     } catch (Exception ignored) {}
                 }
