@@ -1572,11 +1572,33 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isGeminiOverlay(AccessibilityEvent event) {
+        CharSequence className = event.getClassName();
+        if (className != null) {
+            String cls = className.toString();
+            String clsLower = cls.toLowerCase();
+
+            // 1. Skip blocking generic Android layouts/views during app transition
+            if (!cls.contains(".")) {
+                return true; // Allow transition
+            }
+            if (cls.startsWith("android.view.") || cls.startsWith("android.widget.") || 
+                cls.startsWith("android.support.") || cls.startsWith("androidx.")) {
+                return true; // Allow transition
+            }
+
+            // 2. Explicitly allow Gemini activity classes
+            if (clsLower.contains("gemini") || clsLower.contains("bard")) {
+                return true;
+            }
+        }
+
+        // 3. Fallback checks on event text
         String text = getEventText(event).toLowerCase();
         if (text.contains("gemini") || text.contains("bard") || text.contains("জেমিনি")) {
             return true;
         }
 
+        // 4. Fallback checks on source node
         AccessibilityNodeInfo source = event.getSource();
         if (source != null) {
             try {
