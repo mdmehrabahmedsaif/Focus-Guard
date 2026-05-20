@@ -720,6 +720,14 @@ public class BlockerService extends AccessibilityService {
     private void doGoogleDocsBlock(boolean force) {
         if (force || !hasBlockedCurrentSearch) {
             hasBlockedCurrentSearch = true;
+            
+            try {
+                Intent coverIntent = new Intent(this, BlockActivity.class);
+                coverIntent.putExtra("mode", "temp_cover");
+                coverIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+                startActivity(coverIntent);
+            } catch (Exception ignored) {}
+
             kickOutToGoogleDocsHome();
             stopBrowserKillLoop();
         }
@@ -808,6 +816,14 @@ public class BlockerService extends AccessibilityService {
     private void doFromWebClickBlock() {
         // Reset block state for the new click session
         hasBlockedCurrentSearch = false;
+
+        // Launch Zero-Flash Cover Transition to immediately cover the screen
+        try {
+            Intent coverIntent = new Intent(this, BlockActivity.class);
+            coverIntent.putExtra("mode", "temp_cover");
+            coverIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            startActivity(coverIntent);
+        } catch (Exception ignored) {}
 
         // Send an immediate synchronous Back press to dismiss the bottom sheet / cancel transition
         performGlobalAction(GLOBAL_ACTION_BACK);
