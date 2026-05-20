@@ -71,6 +71,8 @@ public class BlockerService extends AccessibilityService {
     @Override
     public boolean onUnbind(Intent intent) {
         dismissOverlayWithAnimation();
+        stopBrowserKillLoop();
+        stopWhatsAppKillLoop();
         instance = null;
         return super.onUnbind(intent);
     }
@@ -89,10 +91,11 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
 
-        // Remove overlay if we leave Google Docs package
-        if (!isGoogleDocsPackage(pkgName)) {
+        // Remove overlay if we leave blocked packages
+        if (!isGoogleDocsPackage(pkgName) && !PKG_WHATSAPP.equals(pkgName)) {
             dismissOverlayWithAnimation();
             stopBrowserKillLoop();
+            stopWhatsAppKillLoop();
         }
 
         int eventType = event.getEventType();
@@ -455,30 +458,202 @@ public class BlockerService extends AccessibilityService {
     // WHATSAPP CHANNELS BLOCKING (Redesigned)
     // =========================================================================
 
-    private void handleWhatsApp(AccessibilityEvent event, int eventType) {
-        if (eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
-            eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            return;
-        }
+    private boolean isWhatsAppKillLoopActive = false;
+    private long whatsAppKillLoopStartTime = 0;
+    private boolean hasBlockedCurrentWhatsApp = false;
 
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
-
-        try {
-            int blockReason = getWhatsAppBlockReason(root);
-            if (blockReason == 1) {
-                // Tab Block - Try to switch to Chats. If it fails (e.g. Chats tab hidden), go Back.
-                boolean switched = switchToWhatsAppChats(root);
-                if (!switched) {
-                    performGlobalAction(GLOBAL_ACTION_BACK);
+    private final Runnable whatsAppKillRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isWhatsAppKillLoopActive) return;
+            
+            boolean isWhatsAppBlockedActive = false;
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    int reason = getWhatsAppBlockReason(root);
+                    if (reason != 0) {
+                        isWhatsAppBlockedActive = true;
+                        doWhatsAppBlock(reason, root);
+                    }
+                } finally {
+                    root.recycle();
                 }
-            } else if (blockReason == 2) {
-                // Channel Block - Instantly go Back (sub-0.1s latency)
+            }
+            
+            long elapsed = System.currentTimeMillis() - whatsAppKillLoopStartTime;
+            
+            // Dynamic Dismissal Check:
+            // If the WhatsApp blocked screen is NOT active (screen is clean):
+            // And either we have already successfully blocked/switched (hasBlockedCurrentWhatsApp == true)
+            // Or a reasonable minimum transition duration has passed (e.g. 300ms) to ensure we don't dismiss early
+            if (!isWhatsAppBlockedActive && (hasBlockedCurrentWhatsApp || elapsed > 300)) {
+                dismissOverlayWithAnimation();
+                isWhatsAppKillLoopActive = false;
+                return;
+            }
+            
+            // Self-schedule the next iteration dynamically
+            if (isWhatsAppKillLoopActive) {
+                if (elapsed < 2100) {
+                    long delay = (elapsed < 600) ? 15L : 100L;
+                    mainHandler.postDelayed(this, delay);
+                } else {
+                    dismissOverlayWithAnimation();
+                    isWhatsAppKillLoopActive = false;
+                }
+            }
+        }
+    };
+
+    private void startWhatsAppKillLoop() {
+        isWhatsAppKillLoopActive = true;
+        whatsAppKillLoopStartTime = System.currentTimeMillis();
+        
+        mainHandler.removeCallbacks(whatsAppKillRunnable);
+        whatsAppKillRunnable.run();
+        
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (isWhatsAppKillLoopActive) {
+                    isWhatsAppKillLoopActive = false;
+                    dismissOverlayWithAnimation();
+                }
+            }
+        }, 1500);
+    }
+
+    private void stopWhatsAppKillLoop() {
+        isWhatsAppKillLoopActive = false;
+        mainHandler.removeCallbacks(whatsAppKillRunnable);
+        dismissOverlayWithAnimation();
+    }
+
+    private void doWhatsAppBlock(int reason, AccessibilityNodeInfo root) {
+        hasBlockedCurrentWhatsApp = true;
+        
+        // Show premium zero-flash overlay
+        showInstantZeroFlashOverlay();
+        
+        if (reason == 1) {
+            // Tab Block - Try to switch to Chats. If it fails, go Back.
+            boolean switched = false;
+            if (root != null) {
+                switched = switchToWhatsAppChats(root);
+            } else {
+                AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
+                if (activeRoot != null) {
+                    try {
+                        switched = switchToWhatsAppChats(activeRoot);
+                    } finally {
+                        activeRoot.recycle();
+                    }
+                }
+            }
+            if (!switched) {
                 performGlobalAction(GLOBAL_ACTION_BACK);
             }
-        } finally {
-            root.recycle();
+        } else if (reason == 2) {
+            // Channel Block - Instantly go Back
+            performGlobalAction(GLOBAL_ACTION_BACK);
+        }
+    }
+
+    private void handleWhatsApp(AccessibilityEvent event, int eventType) {
+        // Reset block state when the user is back in safe state
+        if (hasBlockedCurrentWhatsApp) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+                eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    try {
+                        if (getWhatsAppBlockReason(root) == 0) {
+                            hasBlockedCurrentWhatsApp = false;
+                        }
+                    } finally {
+                        root.recycle();
+                    }
+                }
+            }
+        }
+
+        // ===== FAST PATH #1: Click Interception =====
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            String eventTxt = getEventText(event).toLowerCase().trim();
+            
+            boolean isTabClick = eventTxt.contains("updates") || eventTxt.contains("আপডেট") ||
+                                 eventTxt.contains("channels") || eventTxt.contains("চ্যানেল");
+            
+            boolean isChannelClick = eventTxt.contains(" followers") || eventTxt.contains(" ফলোয়ার") ||
+                                     eventTxt.contains("channel info") || eventTxt.contains("চ্যানেলের তথ্য") ||
+                                     eventTxt.contains("find channels") || eventTxt.contains("চ্যানেল খুঁজুন") ||
+                                     eventTxt.contains("channels to follow") || eventTxt.contains("view channel") || 
+                                     eventTxt.contains("চ্যানেল দেখুন") || eventTxt.contains("public channel") ||
+                                     eventTxt.contains("পাবলিক চ্যানেল") || eventTxt.contains("channel link") ||
+                                     eventTxt.contains("চ্যানেলের লিঙ্ক") || eventTxt.contains("channel settings") ||
+                                     eventTxt.contains("চ্যানেল সেটিংস") || eventTxt.contains("report channel") ||
+                                     eventTxt.contains("চ্যানেল সম্পর্কে রিপোর্ট করুন") || eventTxt.equals("follow") ||
+                                     eventTxt.equals("ফলো করুন") || eventTxt.equals("unfollow") ||
+                                     eventTxt.equals("আনফলো করুন");
+            
+            if (isTabClick || isChannelClick) {
+                AccessibilityNodeInfo source = event.getSource();
+                if (source != null) {
+                    try {
+                        if (!isEditableNode(source) && !isInsideChatList(source)) {
+                            hasBlockedCurrentWhatsApp = false;
+                            showInstantZeroFlashOverlay();
+                            
+                            boolean handled = false;
+                            if (isTabClick) {
+                                AccessibilityNodeInfo root = getRootInActiveWindow();
+                                if (root != null) {
+                                    try {
+                                        handled = switchToWhatsAppChats(root);
+                                    } finally {
+                                        root.recycle();
+                                    }
+                                }
+                            }
+                            if (!handled) {
+                                performGlobalAction(GLOBAL_ACTION_BACK);
+                            }
+                            
+                            startWhatsAppKillLoop();
+                            return;
+                        }
+                    } finally {
+                        source.recycle();
+                    }
+                } else {
+                    hasBlockedCurrentWhatsApp = false;
+                    showInstantZeroFlashOverlay();
+                    performGlobalAction(GLOBAL_ACTION_BACK);
+                    startWhatsAppKillLoop();
+                    return;
+                }
+            }
+        }
+
+        // ===== FAST PATH #2: Fallback Watchdog on window/content changes =====
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    int reason = getWhatsAppBlockReason(root);
+                    if (reason != 0) {
+                        doWhatsAppBlock(reason, root);
+                        if (!isWhatsAppKillLoopActive) {
+                            startWhatsAppKillLoop();
+                        }
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
         }
     }
 
