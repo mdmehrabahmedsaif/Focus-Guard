@@ -894,21 +894,34 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // ===== 1-IPC WEBVIEW KICKOUT =====
-        // If a WebView is added or changes content, its source will be a WebView.
-        // Only run when the click was recently triggered, to avoid blocking the normal document editor.
+        // ===== EVENT-DRIVEN ZERO-FLASH WEBVIEW INTERCEPTION =====
+        // Synchronously intercept any WebView in the layout tree the instant it is added.
         if (isBrowserKillLoopActive) {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                AccessibilityNodeInfo source = event.getSource();
-                if (source != null) {
-                    CharSequence srcClass = source.getClassName();
-                    if (srcClass != null && srcClass.toString().toLowerCase().contains("webview")) {
-                        source.recycle();
-                        doGoogleDocsBlock(true); // Bypass cooldown for instant close
-                        return;
+                
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    try {
+                        if (hasWebViewInTree(root, 0)) {
+                            doGoogleDocsBlock(true); // Bypass cooldown for instant close
+                            return;
+                        }
+                    } finally {
+                        root.recycle();
                     }
-                    source.recycle();
+                } else {
+                    AccessibilityNodeInfo source = event.getSource();
+                    if (source != null) {
+                        try {
+                            if (hasWebViewInTree(source, 0)) {
+                                doGoogleDocsBlock(true); // Bypass cooldown for instant close
+                                return;
+                            }
+                        } finally {
+                            source.recycle();
+                        }
+                    }
                 }
             }
         }
@@ -1177,6 +1190,30 @@ public class BlockerService extends AccessibilityService {
                 return true;
             }
             if (child != null) child.recycle();
+        }
+        
+        return false;
+    }
+
+    private boolean hasWebViewInTree(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 8) return false;
+        
+        CharSequence cls = node.getClassName();
+        if (cls != null) {
+            String clsStr = cls.toString();
+            if (clsStr.contains("WebView") || clsStr.contains("webview")) {
+                return true;
+            }
+        }
+        
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                boolean found = hasWebViewInTree(child, depth + 1);
+                child.recycle();
+                if (found) return true;
+            }
         }
         
         return false;
