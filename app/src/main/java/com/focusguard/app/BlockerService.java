@@ -900,30 +900,13 @@ public class BlockerService extends AccessibilityService {
                 return;
             }
             
-            // 2. Otherwise check layout tree
+            // 2. Otherwise check layout tree using highly optimized, single-pass checkDocsSearchDeep
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root != null) {
                 try {
-                    isWebSearchExplicit = false;
-                    hasSearchIcon = false;
-                    hasFormattingBar = false;
-                    hasWebDomain = false;
-                    hasLeftArrow = false;
-                    hasWebView = false;
-                    hasProgressBar = false;
-                    hasEditText = false;
-                    hasHamburgerMenu = false;
-                    hasFAB = false;
-                    hasRecyclerView = false;
-                    
-                    scanDocsUIOptimized(root, 0);
-                    
-                    // Highly specific match for "From Web" search browser inside Google Docs
-                    if (hasWebView && hasLeftArrow && !hasFormattingBar && !hasHamburgerMenu && !hasFAB) {
-                        if (isWebSearchExplicit || hasWebDomain || (hasEditText && hasSearchIcon)) {
-                            doGoogleDocsBlock(true);
-                            return;
-                        }
+                    if (checkDocsSearchDeep(root)) {
+                        doGoogleDocsBlock(true);
+                        return;
                     }
                 } finally {
                     root.recycle();
@@ -955,7 +938,7 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // ===== FAST PATH #2: Minimal-IPC tree search with early exit =====
+        // ===== FAST PATH #2: Highly Optimized Single-Pass Tree Search =====
         // Only check for search pages if the browser kill loop is currently active.
         // This ensures 100% safety for normal document editing/viewing.
         if (isBrowserKillLoopActive) {
@@ -965,81 +948,9 @@ public class BlockerService extends AccessibilityService {
                 AccessibilityNodeInfo root = getRootInActiveWindow();
                 if (root == null) return;
                 try {
-                    // Check 1: Most distinctive text — single IPC, early exit
-                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Search your docs and the web");
-                    if (!hits.isEmpty()) {
-                        for (AccessibilityNodeInfo n : hits) n.recycle();
+                    if (checkDocsSearchDeep(root)) {
                         doGoogleDocsBlock();
                         return;
-                    }
-
-                    // Check 2: Bengali variant
-                    hits = root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব");
-                    if (!hits.isEmpty()) {
-                        for (AccessibilityNodeInfo n : hits) n.recycle();
-                        doGoogleDocsBlock();
-                        return;
-                    }
-
-                    // Check 3: Other search page indicators
-                    if (!root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty()) {
-                        doGoogleDocsBlock();
-                        return;
-                    }
-
-                    // Check 3.5: FAST search bar pattern detection (← + 🔍)
-                    boolean hasNavUp = !root.findAccessibilityNodeInfosByText("Navigate up").isEmpty() ||
-                                       !root.findAccessibilityNodeInfosByText("Close").isEmpty() ||
-                                       !root.findAccessibilityNodeInfosByText("Back").isEmpty() ||
-                                       !root.findAccessibilityNodeInfosByText("বন্ধ করুন").isEmpty() ||
-                                       !root.findAccessibilityNodeInfosByText("উপরে নেভিগেট করুন").isEmpty() ||
-                                       !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty() ||
-                                       !root.findAccessibilityNodeInfosByText("ব্যাক").isEmpty();
-                    if (hasNavUp) {
-                        boolean hasSearchBtn = !root.findAccessibilityNodeInfosByText("Search").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("অনুসন্ধান").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("সার্চ").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("Clear text").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("Clear").isEmpty();
-                        if (hasSearchBtn) {
-                            boolean hasFormatBar = !root.findAccessibilityNodeInfosByText("Bold").isEmpty() ||
-                                                   !root.findAccessibilityNodeInfosByText("বোল্ড").isEmpty() ||
-                                                   !root.findAccessibilityNodeInfosByText("Edit").isEmpty();
-                            if (!hasFormatBar) {
-                                doGoogleDocsBlock();
-                                return;
-                            }
-                        }
-                    }
-
-                    // Check 4: Deep scan
-                    boolean doDeepScan = false;
-                    if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                        doDeepScan = true; // Always scan on new window
-                    } else {
-                        long scanNow = System.currentTimeMillis();
-                        if (scanNow - lastDeepScanTime > 30) {
-                            doDeepScan = true;
-                        }
-                    }
-                    if (doDeepScan) {
-                        lastDeepScanTime = System.currentTimeMillis();
-                        if (checkDocsSearchDeep(root)) {
-                            doGoogleDocsBlock(hasWebView); // Bypass cooldown if WebView is present
-                            return;
-                        }
                     }
                 } finally {
                     root.recycle();
@@ -1076,71 +987,33 @@ public class BlockerService extends AccessibilityService {
         boolean matched = scanDocsUIOptimized(root, 0);
         if (matched) return true;
         
-        if (isWebSearchExplicit) return true;
+        // If we see editor components (formatting bar, hamburger menu, or Floating Action Button),
+        // we are 100% in the normal document editor or document view.
+        // We must NEVER block the normal document editor.
+        if (hasFormattingBar || hasHamburgerMenu || hasFAB) {
+            return false;
+        }
         
-        // If we see the Left Arrow AND a WebView inside Google Docs, it's the web search browser!
-        // This is 100% accurate and blocks it instantly (sub-0.001s) before results even render.
-        if (hasLeftArrow && hasWebView) {
+        // 1. The WebView of the Web Search browser is active (0.000s Zero-Flash detection)
+        if (hasWebView && hasLeftArrow) {
             return true;
         }
-
-        // AGGRESSIVE ZERO-FLASH KICKOUT:
-        // If the browser kill loop is active, and we see a WebView but NO editor components,
-        // it is 100% the web search browser! Block it instantly (0.000s visible time).
-        if (isBrowserKillLoopActive) {
-            if (hasWebView && !hasFormattingBar && !hasHamburgerMenu && !hasFAB) {
+        
+        // 2. Aggressive Zero-Flash WebView check
+        if (hasWebView) {
+            return true;
+        }
+        
+        // 3. Search suggestions or blank search browser is open (EditText + Left Arrow, e.g. suggesting history)
+        if (hasLeftArrow && hasEditText) {
+            return true;
+        }
+        
+        // 4. Any explicit search query or search icon on a secondary screen
+        if (isWebSearchExplicit || hasSearchIcon || hasWebDomain) {
+            if (hasLeftArrow || hasEditText) {
                 return true;
             }
-        }
-
-        // NOTE: Do NOT block on hasWebView alone when the app is in normal state! Google Docs renders documents in a WebView.
-        // Only block WebView when combined with strong search-page signals (LeftArrow, etc.).
-        
-        // If we see a Left Arrow, an EditText (search box), and a ProgressBar (the blue line),
-        // it is the web search loading its results. Block it instantly to hide the blue line!
-        if (hasLeftArrow && hasEditText && hasProgressBar) {
-            return true;
-        }
-        
-        // If we are in the editor (formatting bar visible) AND we see a search icon or web domains
-        if (hasFormattingBar && (hasSearchIcon || hasWebDomain)) {
-            return true;
-        }
-        
-        // Even if keyboard hides formatting bar, if we see search icon AND web domains, it's the web search
-        if (hasSearchIcon && hasWebDomain) {
-            return true;
-        }
-        
-        // If we see the Left Arrow AND Search Icon (or Clear icon), block it instantly.
-        // This covers the search suggestions/history loophole when formatting bar is hidden.
-        // Extremely aggressive block as requested by user.
-        if (hasLeftArrow && hasSearchIcon) {
-            return true;
-        }
-        
-        // If we see the Left Arrow AND Web Domains (e.g. results loaded but no Search Icon), block it.
-        if (hasLeftArrow && hasWebDomain) {
-            return true;
-        }
-        
-        // EXTREME HEURISTIC: Block any secondary search list/browser page
-        // If it's a search page with a list of results, NO hamburger menu (not main app), NO FAB, NO formatting bar.
-        // This makes it physically impossible to miss the browser even if all icons lose their content descriptions!
-        if (hasEditText && (hasRecyclerView || hasWebView) && !hasHamburgerMenu && !hasFAB && !hasFormattingBar) {
-            if (isWebSearchExplicit || hasSearchIcon || hasWebDomain) {
-                return true;
-            }
-        }
-
-        // HEURISTIC 2: If the results are already loaded (hasWebDomain) and we are not in the main editor.
-        if (hasEditText && hasWebDomain && !hasFormattingBar) {
-            return true;
-        }
-
-        // HEURISTIC 3: If it's actively loading (hasProgressBar), has a search box, has a list, and is a secondary screen.
-        if (hasEditText && hasRecyclerView && hasProgressBar && !hasHamburgerMenu && !hasFAB && !hasFormattingBar) {
-            return true;
         }
         
         return false;
