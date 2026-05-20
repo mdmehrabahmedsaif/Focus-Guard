@@ -797,6 +797,10 @@ public class BlockerService extends AccessibilityService {
      * NO cooldown here — every click must be handled.
      */
     private void doFromWebClickBlock() {
+        // Send an immediate synchronous Back press to dismiss the bottom sheet / cancel transition
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        
+        // Start the watchdog loop to catch and kill the browser if it still opens
         startBrowserKillLoop();
     }
 
@@ -920,8 +924,12 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && PKG_GOOGLE_DOCS.equals(pkgName)) {
             // ZERO-IPC check: event text
             String eventTxt = getEventText(event).toLowerCase();
-            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
-                eventTxt.contains("ওয়েব হতে") || eventTxt.contains("ওয়েব হতে")) {
+            if (eventTxt.contains("from web") || 
+                eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
+                eventTxt.contains("ওয়েব হতে") || eventTxt.contains("ওয়েব হতে") ||
+                eventTxt.contains("वेब से") || 
+                eventTxt.contains("desde la web") || eventTxt.contains("de la web") ||
+                eventTxt.contains("da web")) {
                 doFromWebClickBlock();
                 return;
             }
@@ -1096,15 +1104,23 @@ public class BlockerService extends AccessibilityService {
         CharSequence txt = node.getText();
         if (txt != null) {
             String s = txt.toString().toLowerCase();
-            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
-                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে")) return true;
+            if (s.contains("from web") || 
+                s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
+                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
+                s.contains("वेब से") || 
+                s.contains("desde la web") || s.contains("de la web") ||
+                s.contains("da web")) return true;
         }
         
         CharSequence desc = node.getContentDescription();
         if (desc != null) {
             String s = desc.toString().toLowerCase();
-            if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
-                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে")) return true;
+            if (s.contains("from web") || 
+                s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
+                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
+                s.contains("वेब से") || 
+                s.contains("desde la web") || s.contains("de la web") ||
+                s.contains("da web")) return true;
         }
         
         for (int i = 0; i < node.getChildCount(); i++) {
