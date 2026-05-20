@@ -1008,9 +1008,9 @@ public class BlockerService extends AccessibilityService {
         }
 
         // AGGRESSIVE ZERO-FLASH KICKOUT:
-        // If the browser kill loop or watchdog is active, and we see a WebView but NO editor components,
+        // If the browser kill loop is active, and we see a WebView but NO editor components,
         // it is 100% the web search browser! Block it instantly (0.000s visible time).
-        if (isBrowserKillLoopActive || isImagePanelWatchdogActive) {
+        if (isBrowserKillLoopActive) {
             if (hasWebView && !hasFormattingBar && !hasHamburgerMenu && !hasFAB) {
                 return true;
             }
