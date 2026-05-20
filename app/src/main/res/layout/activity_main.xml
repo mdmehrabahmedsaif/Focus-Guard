@@ -69,6 +69,8 @@
                 <View android:layout_width="match_parent" android:layout_height="0.5dp" android:background="#1E293B" android:layout_marginHorizontal="16dp"/>
                 <include layout="@layout/item_switch_futuristic" android:id="@+id/rowInstagram" />
                 <View android:layout_width="match_parent" android:layout_height="0.5dp" android:background="#1E293B" android:layout_marginHorizontal="16dp"/>
+                <include layout="@layout/item_switch_futuristic" android:id="@+id/rowGoogleAssistant" />
+                <View android:layout_width="match_parent" android:layout_height="0.5dp" android:background="#1E293B" android:layout_marginHorizontal="16dp"/>
                 <include layout="@layout/item_switch_futuristic" android:id="@+id/rowGoogleDocs" />
             </LinearLayout>
 

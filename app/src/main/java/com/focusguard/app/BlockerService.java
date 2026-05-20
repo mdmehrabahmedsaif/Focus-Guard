@@ -37,6 +37,8 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_YOUTUBE   = "com.google.android.youtube";
     private static final String PKG_INSTAGRAM = "com.instagram.android";
     private static final String PKG_GOOGLE_DOCS = "com.google.android.apps.docs.editors.docs";
+    private static final String PKG_GOOGLE_ASSISTANT = "com.google.android.apps.googleassistant";
+    private static final String PKG_GOOGLE_APP = "com.google.android.googlequicksearchbox";
 
     private static final String OUR_PACKAGE   = "com.focusguard.app";
     private static final String SERVICE_LABEL = "Focus Guard";
@@ -73,6 +75,7 @@ public class BlockerService extends AccessibilityService {
         dismissOverlayWithAnimation();
         stopBrowserKillLoop();
         stopWhatsAppKillLoop();
+        stopGoogleAssistantKillLoop();
         instance = null;
         return super.onUnbind(intent);
     }
@@ -91,11 +94,23 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
 
+        // 0.00s Instant Google Assistant & Google App Blocker
+        if (prefManager.isGoogleAssistantBlocked()) {
+            if (PKG_GOOGLE_ASSISTANT.equals(pkgName) || PKG_GOOGLE_APP.equals(pkgName)) {
+                doGoogleAssistantBlock();
+                if (!isAssistantKillLoopActive) {
+                    startGoogleAssistantKillLoop();
+                }
+                return;
+            }
+        }
+
         // Remove overlay if we leave blocked packages
-        if (!isGoogleDocsPackage(pkgName) && !PKG_WHATSAPP.equals(pkgName)) {
+        if (!isGoogleDocsPackage(pkgName) && !PKG_WHATSAPP.equals(pkgName) && !PKG_GOOGLE_ASSISTANT.equals(pkgName) && !PKG_GOOGLE_APP.equals(pkgName)) {
             dismissOverlayWithAnimation();
             stopBrowserKillLoop();
             stopWhatsAppKillLoop();
+            stopGoogleAssistantKillLoop();
         }
 
         int eventType = event.getEventType();
@@ -914,6 +929,90 @@ public class BlockerService extends AccessibilityService {
         } finally {
             root.recycle();
         }
+    }
+
+    // =========================================================================
+    // GOOGLE ASSISTANT & GOOGLE APP BLOCKING (v2.0 — Ultra-Fast, Zero-Flash)
+    // =========================================================================
+
+    private boolean hasBlockedCurrentAssistant = false;
+    private boolean isAssistantKillLoopActive = false;
+    private long assistantKillLoopStartTime = 0;
+
+    private final Runnable assistantKillRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isAssistantKillLoopActive) return;
+
+            boolean isAssistantActive = false;
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    CharSequence pkg = root.getPackageName();
+                    if (pkg != null) {
+                        String pkgStr = pkg.toString();
+                        if (PKG_GOOGLE_ASSISTANT.equals(pkgStr) || PKG_GOOGLE_APP.equals(pkgStr)) {
+                            isAssistantActive = true;
+                            doGoogleAssistantBlock();
+                        }
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+
+            long elapsed = System.currentTimeMillis() - assistantKillLoopStartTime;
+
+            // If Google Assistant/App is NOT active anymore, and we have already successfully blocked it:
+            if (!isAssistantActive && (hasBlockedCurrentAssistant || elapsed > 300)) {
+                dismissOverlayWithAnimation();
+                isAssistantKillLoopActive = false;
+                return;
+            }
+
+            // Self-schedule the next iteration dynamically (10ms polling during the critical phase, then 100ms)
+            if (isAssistantKillLoopActive) {
+                if (elapsed < 1500) {
+                    long delay = (elapsed < 600) ? 10L : 100L;
+                    mainHandler.postDelayed(this, delay);
+                } else {
+                    dismissOverlayWithAnimation();
+                    isAssistantKillLoopActive = false;
+                }
+            }
+        }
+    };
+
+    private void startGoogleAssistantKillLoop() {
+        isAssistantKillLoopActive = true;
+        assistantKillLoopStartTime = System.currentTimeMillis();
+        hasBlockedCurrentAssistant = false;
+
+        mainHandler.removeCallbacks(assistantKillRunnable);
+        assistantKillRunnable.run();
+
+        // Safety timeout to automatically dismiss the overlay after 1.5 seconds
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (isAssistantKillLoopActive) {
+                    isAssistantKillLoopActive = false;
+                    dismissOverlayWithAnimation();
+                }
+            }
+        }, 1500);
+    }
+
+    private void stopGoogleAssistantKillLoop() {
+        isAssistantKillLoopActive = false;
+        mainHandler.removeCallbacks(assistantKillRunnable);
+        dismissOverlayWithAnimation();
+    }
+
+    private void doGoogleAssistantBlock() {
+        hasBlockedCurrentAssistant = true;
+        showInstantZeroFlashOverlay();
+        performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
     // =========================================================================
