@@ -862,6 +862,18 @@ public class BlockerService extends AccessibilityService {
                 return;
             }
             
+            // If it's a window state change, block any non-editor transition instantly
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                CharSequence evClass = event.getClassName();
+                if (evClass != null) {
+                    String clsStr = evClass.toString();
+                    if (!clsStr.contains("Editor") && !clsStr.contains("MainActivity") && !clsStr.contains("HomeActivity")) {
+                        doGoogleDocsBlock(true); // Bypass cooldown for instant close
+                        return;
+                    }
+                }
+            }
+            
             CharSequence evClass = event.getClassName();
             if (evClass != null) {
                 String clsStr = evClass.toString();
