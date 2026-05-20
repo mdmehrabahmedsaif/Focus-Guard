@@ -39,6 +39,9 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_GOOGLE_DOCS = "com.google.android.apps.docs.editors.docs";
     private static final String PKG_GOOGLE_ASSISTANT = "com.google.android.apps.googleassistant";
     private static final String PKG_GOOGLE_APP = "com.google.android.googlequicksearchbox";
+    private static final String PKG_GEMINI = "com.google.android.apps.bard";
+
+    private long lastGeminiLaunchTime = 0;
 
     private static final String OUR_PACKAGE   = "com.focusguard.app";
     private static final String SERVICE_LABEL = "Focus Guard";
@@ -94,7 +97,8 @@ public class BlockerService extends AccessibilityService {
         String pkgName = pkg.toString().toLowerCase();
 
         // 1. Gemini standalone app is always allowed and whitelisted
-        if ("com.google.android.apps.bard".equals(pkgName)) {
+        if (PKG_GEMINI.equals(pkgName)) {
+            lastGeminiLaunchTime = System.currentTimeMillis();
             return;
         }
 
@@ -105,8 +109,14 @@ public class BlockerService extends AccessibilityService {
                 return;
             }
             if (PKG_GOOGLE_APP.equals(pkgName)) {
+                if (System.currentTimeMillis() - lastGeminiLaunchTime < 5000) {
+                    // Extend launch time for active Gemini sessions
+                    lastGeminiLaunchTime = System.currentTimeMillis();
+                    return;
+                }
                 if (isGeminiOverlay(event)) {
                     // Allow Gemini voice assistant overlay
+                    lastGeminiLaunchTime = System.currentTimeMillis();
                     return;
                 }
                 // Otherwise block Google App / Assistant instantly
@@ -1598,7 +1608,19 @@ public class BlockerService extends AccessibilityService {
             return true;
         }
 
-        // 4. Fallback checks on source node
+        // 4. Check active window root
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null) {
+            try {
+                if (isGeminiNodeDeep(root, 0)) {
+                    return true;
+                }
+            } finally {
+                root.recycle();
+            }
+        }
+
+        // 5. Fallback checks on source node
         AccessibilityNodeInfo source = event.getSource();
         if (source != null) {
             try {
