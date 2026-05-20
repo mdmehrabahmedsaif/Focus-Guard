@@ -37,11 +37,6 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_YOUTUBE   = "com.google.android.youtube";
     private static final String PKG_INSTAGRAM = "com.instagram.android";
     private static final String PKG_GOOGLE_DOCS = "com.google.android.apps.docs.editors.docs";
-    private static final String PKG_GOOGLE_ASSISTANT = "com.google.android.apps.googleassistant";
-    private static final String PKG_GOOGLE_APP = "com.google.android.googlequicksearchbox";
-    private static final String PKG_GEMINI = "com.google.android.apps.bard";
-
-    private long lastGeminiLaunchTime = 0;
 
     private static final String OUR_PACKAGE   = "com.focusguard.app";
     private static final String SERVICE_LABEL = "Focus Guard";
@@ -95,35 +90,6 @@ public class BlockerService extends AccessibilityService {
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
-
-        // 1. Gemini standalone app is always allowed and whitelisted
-        if (PKG_GEMINI.equals(pkgName)) {
-            lastGeminiLaunchTime = System.currentTimeMillis();
-            return;
-        }
-
-        // 2. Ultra-fast Google Assistant & Google App Blocker (0.00s response)
-        if (prefManager.isGoogleAssistantBlocked()) {
-            if (PKG_GOOGLE_ASSISTANT.equals(pkgName)) {
-                performGlobalAction(GLOBAL_ACTION_HOME);
-                return;
-            }
-            if (PKG_GOOGLE_APP.equals(pkgName)) {
-                if (System.currentTimeMillis() - lastGeminiLaunchTime < 5000) {
-                    // Extend launch time for active Gemini sessions
-                    lastGeminiLaunchTime = System.currentTimeMillis();
-                    return;
-                }
-                if (isGeminiOverlay(event)) {
-                    // Allow Gemini voice assistant overlay
-                    lastGeminiLaunchTime = System.currentTimeMillis();
-                    return;
-                }
-                // Otherwise block Google App / Assistant instantly
-                performGlobalAction(GLOBAL_ACTION_HOME);
-                return;
-            }
-        }
 
         // Remove overlay if we leave blocked packages
         if (!isGoogleDocsPackage(pkgName) && !PKG_WHATSAPP.equals(pkgName)) {
@@ -1579,89 +1545,6 @@ public class BlockerService extends AccessibilityService {
         CharSequence desc = event.getContentDescription();
         if (desc != null) sb.append(desc);
         return sb.toString();
-    }
-
-    private boolean isGeminiOverlay(AccessibilityEvent event) {
-        CharSequence className = event.getClassName();
-        if (className != null) {
-            String cls = className.toString();
-            String clsLower = cls.toLowerCase();
-
-            // 1. Skip blocking generic Android layouts/views during app transition
-            if (!cls.contains(".")) {
-                return true; // Allow transition
-            }
-            if (cls.startsWith("android.view.") || cls.startsWith("android.widget.") || 
-                cls.startsWith("android.support.") || cls.startsWith("androidx.")) {
-                return true; // Allow transition
-            }
-
-            // 2. Explicitly allow Gemini activity classes
-            if (clsLower.contains("gemini") || clsLower.contains("bard")) {
-                return true;
-            }
-        }
-
-        // 3. Fallback checks on event text
-        String text = getEventText(event).toLowerCase();
-        if (text.contains("gemini") || text.contains("bard") || text.contains("জেমিনি")) {
-            return true;
-        }
-
-        // 4. Check active window root
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root != null) {
-            try {
-                if (isGeminiNodeDeep(root, 0)) {
-                    return true;
-                }
-            } finally {
-                root.recycle();
-            }
-        }
-
-        // 5. Fallback checks on source node
-        AccessibilityNodeInfo source = event.getSource();
-        if (source != null) {
-            try {
-                if (isGeminiNodeDeep(source, 0)) {
-                    return true;
-                }
-            } finally {
-                source.recycle();
-            }
-        }
-        return false;
-    }
-
-    private boolean isGeminiNodeDeep(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > 5) return false;
-
-        CharSequence txt = node.getText();
-        if (txt != null) {
-            String s = txt.toString().toLowerCase();
-            if (s.contains("gemini") || s.contains("bard") || s.contains("জেমিনি")) return true;
-        }
-
-        CharSequence desc = node.getContentDescription();
-        if (desc != null) {
-            String s = desc.toString().toLowerCase();
-            if (s.contains("gemini") || s.contains("bard") || s.contains("জেমিনি")) return true;
-        }
-
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child != null) {
-                try {
-                    if (isGeminiNodeDeep(child, depth + 1)) {
-                        return true;
-                    }
-                } finally {
-                    child.recycle();
-                }
-            }
-        }
-        return false;
     }
 
     @Override
