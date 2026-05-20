@@ -601,7 +601,8 @@ public class BlockerService extends AccessibilityService {
                 AccessibilityNodeInfo source = event.getSource();
                 if (source != null) {
                     try {
-                        if (!isEditableNode(source) && !isInsideChatList(source)) {
+                        // Completely bypass isInsideChatList check to guarantee 0.00s visual protection!
+                        if (!isEditableNode(source)) {
                             hasBlockedCurrentWhatsApp = false;
                             showInstantZeroFlashOverlay();
                             
@@ -659,16 +660,10 @@ public class BlockerService extends AccessibilityService {
 
     private int getWhatsAppBlockReason(AccessibilityNodeInfo root) {
         // 0 = Safe, 1 = Tab Block, 2 = Channel Block
-
-        // Single pass keywords to minimize IPC calls (Massive Performance Boost)
-        String[] searchTerms = {
-            "channel", "চ্যানেল", 
-            "follow", "ফলো", 
-            "updates", "আপডেট"
-        };
-
+        String[] searchTerms = {"channel", "চ্যানেল", "follow", "ফলো", "updates", "আপডেট"};
         for (String term : searchTerms) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
+            if (nodes == null) continue;
             int foundReason = 0;
             for (AccessibilityNodeInfo node : nodes) {
                 if (node == null) continue;
@@ -679,8 +674,7 @@ public class BlockerService extends AccessibilityService {
             }
             if (foundReason != 0) return foundReason;
         }
-        
-        return 0; // Safe
+        return 0;
     }
 
     private int evaluateWhatsAppNode(AccessibilityNodeInfo node) {
@@ -711,20 +705,16 @@ public class BlockerService extends AccessibilityService {
 
         // 2. Action Buttons (Anywhere)
         boolean isActionBtn = text.equals("follow") || desc.equals("follow") ||
-                              text.equals("ফলো করুন") || desc.equals("ফলো করুন") ||
-                              text.equals("unfollow") || desc.equals("unfollow") ||
-                              text.equals("আনফলো করুন") || desc.equals("আনফলো করুন");
+                               text.equals("ফলো করুন") || desc.equals("ফলো করুন") ||
+                               text.equals("unfollow") || desc.equals("unfollow") ||
+                               text.equals("আনফলো করুন") || desc.equals("আনফলো করুন");
         if (isActionBtn) {
             if (node.isClickable() || (node.getClassName() != null && node.getClassName().toString().contains("Button"))) {
                 return 2; // Channel Block
             }
         }
 
-        // Expensive chat list check only if needed
-        boolean inChatList = isInsideChatList(node);
-        if (inChatList) return 0; // PREVIOUS FIX: Allow sent messages inside chat list
-
-        // 3. Tab Block (Updates/Channels Tab, NOT in chat list)
+        // 3. Tab Block (Updates/Channels Tab, NEVER gated by inChatList because tab bar could use a list/RecyclerView)
         boolean isTab = text.equals("updates") || desc.contains("updates") ||
                         text.equals("আপডেট") || desc.contains("আপডেট") ||
                         text.equals("channels") || desc.contains("channels") ||
@@ -734,6 +724,10 @@ public class BlockerService extends AccessibilityService {
                 return 1; // Tab Block
             }
         }
+
+        // Expensive chat list check only if needed
+        boolean inChatList = isInsideChatList(node);
+        if (inChatList) return 0; // PREVIOUS FIX: Allow sent messages inside chat list
 
         // 4. Channel Subtitles (NOT in chat list)
         if (text.contains(" followers") || desc.contains(" followers") ||
@@ -746,6 +740,23 @@ public class BlockerService extends AccessibilityService {
         }
 
         return 0; // Safe
+    }
+
+    private boolean isAncestorSelected(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        AccessibilityNodeInfo current = node.getParent();
+        int depth = 0;
+        while (current != null && depth < 8) {
+            if (current.isSelected()) {
+                current.recycle();
+                return true;
+            }
+            AccessibilityNodeInfo parent = current.getParent();
+            current.recycle();
+            current = parent;
+            depth++;
+        }
+        return false;
     }
 
     private boolean switchToWhatsAppChats(AccessibilityNodeInfo root) {
