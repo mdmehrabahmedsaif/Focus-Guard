@@ -33,6 +33,10 @@ public class BlockerService extends AccessibilityService {
     private static final String OUR_PACKAGE   = "com.focusguard.app";
     private static final String SERVICE_LABEL = "Focus Guard";
 
+    private boolean isGoogleDocsPackage(String pkgName) {
+        return pkgName != null && pkgName.startsWith("com.google.android.apps.docs");
+    }
+
     // Pre-allocated Handler + Runnable for zero-GC hot path
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable kickOutRunnable = new Runnable() {
@@ -107,7 +111,7 @@ public class BlockerService extends AccessibilityService {
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
                 handleInstagram();
             }
-        } else if (PKG_GOOGLE_DOCS.equals(pkgName) || 
+        } else if (isGoogleDocsPackage(pkgName) || 
                    "com.google.android.gms".equals(pkgName) || 
                    "com.google.android.googlequicksearchbox".equals(pkgName) || 
                    "com.android.chrome".equals(pkgName) || 
@@ -857,7 +861,7 @@ public class BlockerService extends AccessibilityService {
         // Only run when the click was recently triggered, to avoid blocking the normal document editor
         if (isBrowserKillLoopActive) {
             // If the package is not Google Docs (e.g. Chrome, WebView, other browsers) and loop is active, block it instantly!
-            if (!PKG_GOOGLE_DOCS.equals(pkgName)) {
+            if (!isGoogleDocsPackage(pkgName)) {
                 doGoogleDocsBlock(true); // Bypass cooldown for instant close
                 return;
             }
@@ -909,7 +913,7 @@ public class BlockerService extends AccessibilityService {
         boolean isWatchdogTriggered = false;
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             isWatchdogTriggered = true;
-        } else if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && PKG_GOOGLE_DOCS.equals(pkgName)) {
+        } else if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isGoogleDocsPackage(pkgName)) {
             CharSequence evClass = event.getClassName();
             if (evClass != null && evClass.toString().contains("WebView")) {
                 isWatchdogTriggered = true;
@@ -929,7 +933,7 @@ public class BlockerService extends AccessibilityService {
             // SAFETY GUARD: If the package is NOT Google Docs itself, do NOT run the fallback watchdog.
             // This prevents the fallback watchdog from accidentally blocking external browsers (like Chrome)
             // when they are opened normally by the user outside of a Google Docs "From web" click session.
-            if (!PKG_GOOGLE_DOCS.equals(pkgName)) {
+            if (!isGoogleDocsPackage(pkgName)) {
                 return;
             }
 
@@ -959,7 +963,7 @@ public class BlockerService extends AccessibilityService {
         // ===== FAST PATH #1: "From web" click interception =====
         // When user clicks "From web", fire rapid BACK actions to kill the browser
         // before it can even start rendering. This makes the button appear "dead".
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && PKG_GOOGLE_DOCS.equals(pkgName)) {
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isGoogleDocsPackage(pkgName)) {
             // ZERO-IPC check: event text
             String eventTxt = getEventText(event).toLowerCase();
             if (eventTxt.contains("from web") || 
