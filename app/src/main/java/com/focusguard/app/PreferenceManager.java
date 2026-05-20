@@ -12,6 +12,7 @@ public class PreferenceManager {
     private static final String KEY_BLOCK_YOUTUBE = "block_youtube";
     private static final String KEY_BLOCK_INSTAGRAM = "block_instagram";
     private static final String KEY_BLOCK_GOOGLE_DOCS = "block_google_docs";
+    private static final String KEY_BLOCK_GOOGLE_ASSISTANT = "block_google_assistant";
     private static final String KEY_BLOCK_ACCESSIBILITY = "block_accessibility";
     private static final String KEY_BLOCK_DEVICE_ADMIN = "block_device_admin";
     private static final String KEY_BLOCK_UNINSTALL = "block_uninstall";
@@ -62,6 +63,14 @@ public class PreferenceManager {
 
     public boolean isGoogleDocsBlocked() {
         return prefs.getBoolean(KEY_BLOCK_GOOGLE_DOCS, true);
+    }
+
+    public void setGoogleAssistantBlocked(boolean blocked) {
+        prefs.edit().putBoolean(KEY_BLOCK_GOOGLE_ASSISTANT, blocked).apply();
+    }
+
+    public boolean isGoogleAssistantBlocked() {
+        return prefs.getBoolean(KEY_BLOCK_GOOGLE_ASSISTANT, true);
     }
 
     public void setAccessibilityProtected(boolean protected_acc) {

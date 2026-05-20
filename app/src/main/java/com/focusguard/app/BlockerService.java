@@ -37,6 +37,8 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_YOUTUBE   = "com.google.android.youtube";
     private static final String PKG_INSTAGRAM = "com.instagram.android";
     private static final String PKG_GOOGLE_DOCS = "com.google.android.apps.docs.editors.docs";
+    private static final String PKG_GOOGLE_ASSISTANT = "com.google.android.apps.googleassistant";
+    private static final String PKG_GOOGLE_APP = "com.google.android.googlequicksearchbox";
 
     private static final String OUR_PACKAGE   = "com.focusguard.app";
     private static final String SERVICE_LABEL = "Focus Guard";
@@ -136,6 +138,18 @@ public class BlockerService extends AccessibilityService {
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
                 handleInstagram();
             }
+        } 
+        
+        // Google Assistant (Standalone)
+        if (PKG_GOOGLE_ASSISTANT.equals(pkgName)) {
+            if (prefManager.isGoogleAssistantBlocked()) {
+                performGlobalAction(GLOBAL_ACTION_HOME);
+            }
+        } 
+        
+        // Google Assistant (Overlay) or Google Docs
+        if (PKG_GOOGLE_APP.equals(pkgName) && prefManager.isGoogleAssistantBlocked() && isGoogleAssistantOverlay(event, pkgName)) {
+            performGlobalAction(GLOBAL_ACTION_HOME);
         } else if (isGoogleDocsPackage(pkgName) || 
                    "com.google.android.gms".equals(pkgName) || 
                    "com.google.android.googlequicksearchbox".equals(pkgName) || 
@@ -1542,6 +1556,54 @@ public class BlockerService extends AccessibilityService {
         CharSequence desc = event.getContentDescription();
         if (desc != null) sb.append(desc);
         return sb.toString();
+    }
+
+    private boolean isGoogleAssistantOverlay(AccessibilityEvent event, String pkgName) {
+        if (!PKG_GOOGLE_APP.equals(pkgName)) return false;
+
+        String text = getEventText(event).toLowerCase();
+        if (text.contains("assistant") || 
+            text.contains("hey google") || 
+            text.contains("ok google") ||
+            text.contains("voice search") ||
+            text.contains("অ্যাসিস্ট্যান্ট") ||
+            text.contains("অ্যাসিস্টেন্ট")) {
+            return true;
+        }
+
+        AccessibilityNodeInfo source = event.getSource();
+        if (source != null) {
+            boolean isAssis = isGoogleAssistantNodeDeep(source, 0);
+            source.recycle();
+            return isAssis;
+        }
+        return false;
+    }
+
+    private boolean isGoogleAssistantNodeDeep(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 5) return false;
+        
+        CharSequence txt = node.getText();
+        if (txt != null) {
+            String s = txt.toString().toLowerCase();
+            if (s.contains("assistant") || s.contains("hey google") || s.contains("ok google") || s.contains("voice search") || s.contains("অ্যাসিস্ট্যান্ট") || s.contains("অ্যাসিস্টেন্ট")) return true;
+        }
+        
+        CharSequence desc = node.getContentDescription();
+        if (desc != null) {
+            String s = desc.toString().toLowerCase();
+            if (s.contains("assistant") || s.contains("hey google") || s.contains("ok google") || s.contains("voice search") || s.contains("অ্যাসিস্ট্যান্ট") || s.contains("অ্যাসিস্টেন্ট")) return true;
+        }
+        
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (isGoogleAssistantNodeDeep(child, depth + 1)) {
+                if (child != null) child.recycle();
+                return true;
+            }
+            if (child != null) child.recycle();
+        }
+        return false;
     }
 
     @Override
