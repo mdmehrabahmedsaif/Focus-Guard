@@ -753,14 +753,22 @@ public class BlockerService extends AccessibilityService {
 
     private void startBrowserKillLoop() {
         isBrowserKillLoopActive = true;
-        // Fire immediate BACK to close the Image Panel
+        // Fire 3 immediate BACKs to close the Image Panel AND kill any browser fragment
+        // before it can even render a single frame
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        performGlobalAction(GLOBAL_ACTION_BACK);
         performGlobalAction(GLOBAL_ACTION_BACK);
         lastGoogleDocsBlockTime = System.currentTimeMillis();
-        // Schedule 200 checks over 2 seconds (every 10ms)
-        for (int i = 1; i <= 200; i++) {
-            mainHandler.postDelayed(browserKillRunnable, i * 10L);
+        // Phase 1: Ultra-rapid polling every 5ms for the first 500ms (100 checks)
+        // This is the critical window where the browser tries to appear
+        for (int i = 1; i <= 100; i++) {
+            mainHandler.postDelayed(browserKillRunnable, i * 5L);
         }
-        // Auto-stop after 2 seconds
+        // Phase 2: Slower polling every 15ms for next 1.5 seconds (100 checks)
+        for (int i = 1; i <= 100; i++) {
+            mainHandler.postDelayed(browserKillRunnable, 500L + i * 15L);
+        }
+        // Auto-stop after 2.1 seconds
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -837,10 +845,7 @@ public class BlockerService extends AccessibilityService {
                s.contains("গুগল অনুসন্ধান") ||
                s.contains("গুগল সার্চ") ||
                s.contains("google search") ||
-               s.contains("search the web") ||
-               s.contains("explore") ||
-               s.contains("অন্বেষণ") ||
-               s.contains("অন্বেষণ করুন");
+               s.contains("search the web");
     }
 
     private boolean isImagePanelWatchdogActive = false;
@@ -906,32 +911,37 @@ public class BlockerService extends AccessibilityService {
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
         // ===== ABSOLUTE ZERO-IPC WEBVIEW KICKOUT (<0.0001s) =====
-        CharSequence evClass = event.getClassName();
-        if (evClass != null) {
-            String clsStr = evClass.toString().toLowerCase();
-            if (clsStr.contains("webview") || clsStr.contains("websearch") || 
-                clsStr.contains("explore") || clsStr.contains("browser") || 
-                clsStr.contains("customtab")) {
-                stopImagePanelWatchdog();
-                doGoogleDocsBlock(true); // Bypass cooldown for instant close
-                return;
-            }
-        }
-
-        // ===== 1-IPC WEBVIEW KICKOUT =====
-        // If a WebView is added or changes content, its source will be a WebView
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            AccessibilityNodeInfo source = event.getSource();
-            if (source != null) {
-                CharSequence srcClass = source.getClassName();
-                if (srcClass != null && srcClass.toString().toLowerCase().contains("webview")) {
-                    source.recycle();
+        // Only run when the click or watchdog was recently triggered, to avoid blocking the normal document editor
+        if (isBrowserKillLoopActive || isImagePanelWatchdogActive) {
+            CharSequence evClass = event.getClassName();
+            if (evClass != null) {
+                String clsStr = evClass.toString();
+                if (clsStr.contains("WebView") || clsStr.contains("WebSearch") || 
+                    clsStr.contains("CustomTab") || clsStr.contains("ExploreActivity")) {
                     stopImagePanelWatchdog();
                     doGoogleDocsBlock(true); // Bypass cooldown for instant close
                     return;
                 }
-                source.recycle();
+            }
+        }
+
+        // ===== 1-IPC WEBVIEW KICKOUT =====
+        // If a WebView is added or changes content, its source will be a WebView.
+        // Only run when the click or watchdog was recently triggered, to avoid blocking the normal document editor.
+        if (isBrowserKillLoopActive || isImagePanelWatchdogActive) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                AccessibilityNodeInfo source = event.getSource();
+                if (source != null) {
+                    CharSequence srcClass = source.getClassName();
+                    if (srcClass != null && srcClass.toString().toLowerCase().contains("webview")) {
+                        source.recycle();
+                        stopImagePanelWatchdog();
+                        doGoogleDocsBlock(true); // Bypass cooldown for instant close
+                        return;
+                    }
+                    source.recycle();
+                }
             }
         }
 
@@ -974,8 +984,7 @@ public class BlockerService extends AccessibilityService {
             // ZERO-IPC check: event text
             String eventTxt = getEventText(event).toLowerCase();
             if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
-                eventTxt.contains("ওয়েব হতে") || eventTxt.contains("ওয়েব হতে") ||
-                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ")) {
+                eventTxt.contains("ওয়েব হতে") || eventTxt.contains("ওয়েব হতে")) {
                 stopImagePanelWatchdog();
                 doFromWebClickBlock();
                 return;
@@ -1009,7 +1018,7 @@ public class BlockerService extends AccessibilityService {
 
             String eventTxt = getEventText(event).toLowerCase();
             if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
-                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ")) {
+                eventTxt.contains("ওয়েব হতে") || eventTxt.contains("ওয়েব হতে")) {
                 startImagePanelWatchdog();
             }
         }
@@ -1116,11 +1125,7 @@ public class BlockerService extends AccessibilityService {
                         !root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty() ||
                         !root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty() ||
                         !root.findAccessibilityNodeInfosByText("ওয়েব হতে").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("ওয়েব হতে").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("Explore").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("अन्वेषण").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("অন্বেষণ").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("অন্বেষণ করুন").isEmpty()) {
+                        !root.findAccessibilityNodeInfosByText("ওয়েব হতে").isEmpty()) {
                         startImagePanelWatchdog();
                     }
                 }
@@ -1165,15 +1170,17 @@ public class BlockerService extends AccessibilityService {
             return true;
         }
 
-        // If we see a WebView, and we are not in the main editor or main document list
-        if (hasWebView && !hasHamburgerMenu && !hasFAB && !hasFormattingBar) {
-            return true;
+        // AGGRESSIVE ZERO-FLASH KICKOUT:
+        // If the browser kill loop or watchdog is active, and we see a WebView but NO editor components,
+        // it is 100% the web search browser! Block it instantly (0.000s visible time).
+        if (isBrowserKillLoopActive || isImagePanelWatchdogActive) {
+            if (hasWebView && !hasFormattingBar && !hasHamburgerMenu && !hasFAB) {
+                return true;
+            }
         }
 
-        // If we see a WebView and a search EditText inside Google Docs
-        if (hasWebView && hasEditText) {
-            return true;
-        }
+        // NOTE: Do NOT block on hasWebView alone when the app is in normal state! Google Docs renders documents in a WebView.
+        // Only block WebView when combined with strong search-page signals (LeftArrow, etc.).
         
         // If we see a Left Arrow, an EditText (search box), and a ProgressBar (the blue line),
         // it is the web search loading its results. Block it instantly to hide the blue line!
@@ -1285,7 +1292,8 @@ public class BlockerService extends AccessibilityService {
             
             // Fast exit: stop scanning once we have enough signals
             if (isWebSearchExplicit) return;
-            if (hasWebView) return; // Instantly exit scanning once a WebView is found
+            // NOTE: Do NOT early-exit on hasWebView alone — Google Docs editor IS a WebView.
+            // We must continue scanning to find formatting bar, hamburger menu, etc.
             if (hasLeftArrow && hasWebView) return;
             if (hasLeftArrow && hasEditText && hasProgressBar) return;
         }
@@ -1298,16 +1306,14 @@ public class BlockerService extends AccessibilityService {
         if (txt != null) {
             String s = txt.toString().toLowerCase();
             if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
-                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
-                s.contains("explore") || s.contains("অন্বেষণ")) return true;
+                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে")) return true;
         }
         
         CharSequence desc = node.getContentDescription();
         if (desc != null) {
             String s = desc.toString().toLowerCase();
             if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
-                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
-                s.contains("explore") || s.contains("অন্বেষণ")) return true;
+                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে")) return true;
         }
         
         for (int i = 0; i < node.getChildCount(); i++) {
