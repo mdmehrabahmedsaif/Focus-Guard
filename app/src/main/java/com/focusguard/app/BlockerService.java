@@ -695,12 +695,18 @@ public class BlockerService extends AccessibilityService {
 
     /**
      * Fires the block with a 100ms cooldown to prevent rapid double-fire.
+     * Can be forced to bypass the cooldown.
      */
-    private void doGoogleDocsBlock() {
+    private void doGoogleDocsBlock(boolean force) {
         long now = System.currentTimeMillis();
-        if (now - lastGoogleDocsBlockTime < 100) return;
-        lastGoogleDocsBlockTime = now;
-        kickOutToGoogleDocsHome();
+        if (force || (now - lastGoogleDocsBlockTime >= 100)) {
+            lastGoogleDocsBlockTime = now;
+            kickOutToGoogleDocsHome();
+        }
+    }
+
+    private void doGoogleDocsBlock() {
+        doGoogleDocsBlock(false);
     }
 
     /**
@@ -730,8 +736,10 @@ public class BlockerService extends AccessibilityService {
                 // Check if browser/search page exists using structural detection
                 if (checkDocsSearchDeep(root)) {
                     long now = System.currentTimeMillis();
-                    // 150ms cooldown between BACKs within the kill loop to avoid over-backing
-                    if (now - lastBrowserKillBackTime >= 150) {
+                    // If WebView is detected, bypass cooldown to ensure sub-millisecond block!
+                    boolean force = hasWebView;
+                    // 100ms cooldown between BACKs within the kill loop to avoid over-backing
+                    if (force || (now - lastBrowserKillBackTime >= 100)) {
                         lastBrowserKillBackTime = now;
                         lastGoogleDocsBlockTime = now;
                         performGlobalAction(GLOBAL_ACTION_BACK);
@@ -817,7 +825,22 @@ public class BlockerService extends AccessibilityService {
                s.contains("search directly in docs") ||
                s.contains("search web") ||
                s.contains("ওয়েবে খুঁজুন") ||
-               s.contains("search query");
+               s.contains("search query") ||
+               s.contains("ওয়েব অনুসন্ধান") ||
+               s.contains("ওয়েব অনুসন্ধান") ||
+               s.contains("ওয়েব সার্চ") ||
+               s.contains("ওয়েব সার্চ") ||
+               s.contains("ওয়েবে অনুসন্ধান") ||
+               s.contains("ওয়েবে অনুসন্ধান") ||
+               s.contains("ছবি অনুসন্ধান") ||
+               s.contains("ছবি সার্চ") ||
+               s.contains("গুগল অনুসন্ধান") ||
+               s.contains("গুগল সার্চ") ||
+               s.contains("google search") ||
+               s.contains("search the web") ||
+               s.contains("explore") ||
+               s.contains("অন্বেষণ") ||
+               s.contains("অন্বেষণ করুন");
     }
 
     private boolean isImagePanelWatchdogActive = false;
@@ -885,10 +908,12 @@ public class BlockerService extends AccessibilityService {
         // ===== ABSOLUTE ZERO-IPC WEBVIEW KICKOUT (<0.0001s) =====
         CharSequence evClass = event.getClassName();
         if (evClass != null) {
-            String clsStr = evClass.toString();
-            if (clsStr.contains("WebView") || clsStr.contains("WebSearch") || clsStr.contains("ExploreActivity")) {
+            String clsStr = evClass.toString().toLowerCase();
+            if (clsStr.contains("webview") || clsStr.contains("websearch") || 
+                clsStr.contains("explore") || clsStr.contains("browser") || 
+                clsStr.contains("customtab")) {
                 stopImagePanelWatchdog();
-                doGoogleDocsBlock();
+                doGoogleDocsBlock(true); // Bypass cooldown for instant close
                 return;
             }
         }
@@ -900,10 +925,10 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
                 CharSequence srcClass = source.getClassName();
-                if (srcClass != null && srcClass.toString().contains("WebView")) {
+                if (srcClass != null && srcClass.toString().toLowerCase().contains("webview")) {
                     source.recycle();
                     stopImagePanelWatchdog();
-                    doGoogleDocsBlock();
+                    doGoogleDocsBlock(true); // Bypass cooldown for instant close
                     return;
                 }
                 source.recycle();
@@ -948,8 +973,9 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             // ZERO-IPC check: event text
             String eventTxt = getEventText(event).toLowerCase();
-            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
-                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ করুন")) {
+            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
+                eventTxt.contains("ওয়েব হতে") || eventTxt.contains("ওয়েব হতে") ||
+                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ")) {
                 stopImagePanelWatchdog();
                 doFromWebClickBlock();
                 return;
@@ -982,8 +1008,8 @@ public class BlockerService extends AccessibilityService {
             eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
 
             String eventTxt = getEventText(event).toLowerCase();
-            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") ||
-                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ করুন")) {
+            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
+                eventTxt.contains("explore") || eventTxt.contains("অন্বেষণ")) {
                 startImagePanelWatchdog();
             }
         }
@@ -1079,7 +1105,7 @@ public class BlockerService extends AccessibilityService {
                     lastDeepScanTime = System.currentTimeMillis();
                     if (checkDocsSearchDeep(root)) {
                         stopImagePanelWatchdog();
-                        doGoogleDocsBlock();
+                        doGoogleDocsBlock(hasWebView); // Bypass cooldown if WebView is present
                         return;
                     }
                 }
@@ -1087,7 +1113,14 @@ public class BlockerService extends AccessibilityService {
                 // Check 5: Activate watchdog if Image panel is open (tree-based, works on ALL devices)
                 if (!isImagePanelWatchdogActive) {
                     if (!root.findAccessibilityNodeInfosByText("From web").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty()) {
+                        !root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("ওয়েব হতে").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("ওয়েব হতে").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("Explore").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("अन्वेषण").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("অন্বেষণ").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("অন্বেষণ করুন").isEmpty()) {
                         startImagePanelWatchdog();
                     }
                 }
@@ -1131,6 +1164,16 @@ public class BlockerService extends AccessibilityService {
         if (hasLeftArrow && hasWebView) {
             return true;
         }
+
+        // If we see a WebView, and we are not in the main editor or main document list
+        if (hasWebView && !hasHamburgerMenu && !hasFAB && !hasFormattingBar) {
+            return true;
+        }
+
+        // If we see a WebView and a search EditText inside Google Docs
+        if (hasWebView && hasEditText) {
+            return true;
+        }
         
         // If we see a Left Arrow, an EditText (search box), and a ProgressBar (the blue line),
         // it is the web search loading its results. Block it instantly to hide the blue line!
@@ -1160,11 +1203,13 @@ public class BlockerService extends AccessibilityService {
             return true;
         }
         
-        // EXTREME HEURISTIC: Block any secondary search list page (neutralizes "From Web" and "Explore")
+        // EXTREME HEURISTIC: Block any secondary search list/browser page
         // If it's a search page with a list of results, NO hamburger menu (not main app), NO FAB, NO formatting bar.
         // This makes it physically impossible to miss the browser even if all icons lose their content descriptions!
-        if (hasEditText && hasRecyclerView && hasSearchIcon && !hasHamburgerMenu && !hasFAB && !hasFormattingBar) {
-            return true;
+        if (hasEditText && (hasRecyclerView || hasWebView) && !hasHamburgerMenu && !hasFAB && !hasFormattingBar) {
+            if (isWebSearchExplicit || hasSearchIcon || hasWebDomain) {
+                return true;
+            }
         }
 
         // HEURISTIC 2: If the results are already loaded (hasWebDomain) and we are not in the main editor.
@@ -1240,6 +1285,7 @@ public class BlockerService extends AccessibilityService {
             
             // Fast exit: stop scanning once we have enough signals
             if (isWebSearchExplicit) return;
+            if (hasWebView) return; // Instantly exit scanning once a WebView is found
             if (hasLeftArrow && hasWebView) return;
             if (hasLeftArrow && hasEditText && hasProgressBar) return;
         }
@@ -1252,14 +1298,16 @@ public class BlockerService extends AccessibilityService {
         if (txt != null) {
             String s = txt.toString().toLowerCase();
             if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
-                s.equals("explore") || s.equals("অন্বেষণ করুন")) return true;
+                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
+                s.contains("explore") || s.contains("অন্বেষণ")) return true;
         }
         
         CharSequence desc = node.getContentDescription();
         if (desc != null) {
             String s = desc.toString().toLowerCase();
             if (s.contains("from web") || s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
-                s.equals("explore") || s.equals("অন্বেষণ করুন")) return true;
+                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
+                s.contains("explore") || s.contains("অন্বেষণ")) return true;
         }
         
         for (int i = 0; i < node.getChildCount(); i++) {
