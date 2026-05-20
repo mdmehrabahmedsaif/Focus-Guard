@@ -697,6 +697,7 @@ public class BlockerService extends AccessibilityService {
 
     private long lastGoogleDocsBlockTime = 0;
     private long lastDeepScanTime = 0;
+    private boolean hasBlockedCurrentSearch = false;
 
     private void kickOutToGoogleDocsHome() {
         // A single BACK action destroys the browser fragment and returns to the document.
@@ -704,13 +705,12 @@ public class BlockerService extends AccessibilityService {
     }
 
     /**
-     * Fires the block with a strict 350ms cooldown to completely eliminate double-backing
-     * and guarantee the user remains safely inside the document editor.
+     * Fires the block using a robust event-driven State Machine (hasBlockedCurrentSearch)
+     * to eliminate double-backing while allowing instant back-to-back blocks for new clicks.
      */
     private void doGoogleDocsBlock(boolean force) {
-        long now = System.currentTimeMillis();
-        if (now - lastGoogleDocsBlockTime >= 350) {
-            lastGoogleDocsBlockTime = now;
+        if (!hasBlockedCurrentSearch) {
+            hasBlockedCurrentSearch = true;
             kickOutToGoogleDocsHome();
             stopBrowserKillLoop();
         }
@@ -797,6 +797,9 @@ public class BlockerService extends AccessibilityService {
      * NO cooldown here — every click must be handled.
      */
     private void doFromWebClickBlock() {
+        // Reset block state for the new click session
+        hasBlockedCurrentSearch = false;
+
         // Send an immediate synchronous Back press to dismiss the bottom sheet / cancel transition
         performGlobalAction(GLOBAL_ACTION_BACK);
         
@@ -834,6 +837,22 @@ public class BlockerService extends AccessibilityService {
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType, String pkgName) {
+        // Reset block state when the user is back in the normal editor
+        if (hasBlockedCurrentSearch) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+                eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    try {
+                        if (!checkDocsSearchDeep(root)) {
+                            hasBlockedCurrentSearch = false;
+                        }
+                    } finally {
+                        root.recycle();
+                    }
+                }
+            }
+        }
         // ===== ABSOLUTE ZERO-IPC WEBVIEW KICKOUT (<0.0001s) =====
         // Only run when the click was recently triggered, to avoid blocking the normal document editor
         if (isBrowserKillLoopActive) {
