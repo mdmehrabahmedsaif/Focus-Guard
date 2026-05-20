@@ -112,7 +112,12 @@ public class BlockerService extends AccessibilityService {
                    "com.google.android.googlequicksearchbox".equals(pkgName) || 
                    "com.android.chrome".equals(pkgName) || 
                    "com.google.android.webview".equals(pkgName) || 
-                   "com.android.webview".equals(pkgName)) {
+                   "com.android.webview".equals(pkgName) ||
+                   pkgName.contains("browser") || 
+                   pkgName.contains("firefox") || 
+                   pkgName.contains("opera") || 
+                   pkgName.contains("searchbox") || 
+                   pkgName.contains("websearch")) {
             if (prefManager.isGoogleDocsBlocked()) {
                 handleGoogleDocs(event, eventType, pkgName);
             }
@@ -730,50 +735,64 @@ public class BlockerService extends AccessibilityService {
      */
     private boolean isBrowserKillLoopActive = false;
     private long lastBrowserKillBackTime = 0;
+    private long browserKillLoopStartTime = 0;
 
     private final Runnable browserKillRunnable = new Runnable() {
         @Override
         public void run() {
             if (!isBrowserKillLoopActive) return;
+            
             AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            try {
-                // Check if browser/search page exists using structural detection
-                if (checkDocsSearchDeep(root)) {
-                    long now = System.currentTimeMillis();
-                    // If WebView is detected, bypass cooldown to ensure sub-millisecond block!
-                    boolean force = hasWebView;
-                    // 100ms cooldown between BACKs within the kill loop to avoid over-backing
-                    if (force || (now - lastBrowserKillBackTime >= 100)) {
-                        lastBrowserKillBackTime = now;
-                        lastGoogleDocsBlockTime = now;
-                        performGlobalAction(GLOBAL_ACTION_BACK);
+            if (root != null) {
+                try {
+                    // Check if browser/search page exists using structural detection
+                    if (checkDocsSearchDeep(root)) {
+                        long now = System.currentTimeMillis();
+                        // If WebView is detected, bypass cooldown to ensure sub-millisecond block!
+                        boolean force = hasWebView;
+                        // 100ms cooldown between BACKs within the kill loop to avoid over-backing
+                        if (force || (now - lastBrowserKillBackTime >= 100)) {
+                            lastBrowserKillBackTime = now;
+                            lastGoogleDocsBlockTime = now;
+                            performGlobalAction(GLOBAL_ACTION_BACK);
+                        }
                     }
+                } finally {
+                    root.recycle();
                 }
-            } finally {
-                root.recycle();
+            }
+            
+            // Self-schedule the next iteration dynamically
+            if (isBrowserKillLoopActive) {
+                long elapsed = System.currentTimeMillis() - browserKillLoopStartTime;
+                if (elapsed < 2100) {
+                    // Ultra-rapid polling (3ms) in the critical first 600ms, then 12ms for CPU health
+                    long delay = (elapsed < 600) ? 3L : 12L;
+                    mainHandler.postDelayed(this, delay);
+                } else {
+                    isBrowserKillLoopActive = false;
+                }
             }
         }
     };
 
     private void startBrowserKillLoop() {
         isBrowserKillLoopActive = true;
-        // Fire 3 immediate BACKs to close the Image Panel AND kill any browser fragment
-        // before it can even render a single frame
+        browserKillLoopStartTime = System.currentTimeMillis();
+        
+        // Remove any existing callbacks of this runnable to prevent overlapping loops
+        mainHandler.removeCallbacks(browserKillRunnable);
+        
+        // Fire immediate BACKs to close the Image Panel and preemptively block the browser window
         performGlobalAction(GLOBAL_ACTION_BACK);
         performGlobalAction(GLOBAL_ACTION_BACK);
         performGlobalAction(GLOBAL_ACTION_BACK);
         lastGoogleDocsBlockTime = System.currentTimeMillis();
-        // Phase 1: Ultra-rapid polling every 5ms for the first 500ms (100 checks)
-        // This is the critical window where the browser tries to appear
-        for (int i = 1; i <= 100; i++) {
-            mainHandler.postDelayed(browserKillRunnable, i * 5L);
-        }
-        // Phase 2: Slower polling every 15ms for next 1.5 seconds (100 checks)
-        for (int i = 1; i <= 100; i++) {
-            mainHandler.postDelayed(browserKillRunnable, 500L + i * 15L);
-        }
-        // Auto-stop after 2.1 seconds
+        
+        // Start the self-scheduling loop immediately
+        mainHandler.post(browserKillRunnable);
+        
+        // Safety auto-stop after 2.1 seconds
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -784,6 +803,7 @@ public class BlockerService extends AccessibilityService {
 
     private void stopBrowserKillLoop() {
         isBrowserKillLoopActive = false;
+        mainHandler.removeCallbacks(browserKillRunnable);
     }
 
     /**
@@ -827,6 +847,12 @@ public class BlockerService extends AccessibilityService {
         // ===== ABSOLUTE ZERO-IPC WEBVIEW KICKOUT (<0.0001s) =====
         // Only run when the click was recently triggered, to avoid blocking the normal document editor
         if (isBrowserKillLoopActive) {
+            // If the package is not Google Docs (e.g. Chrome, WebView, other browsers) and loop is active, block it instantly!
+            if (!PKG_GOOGLE_DOCS.equals(pkgName)) {
+                doGoogleDocsBlock(true); // Bypass cooldown for instant close
+                return;
+            }
+            
             CharSequence evClass = event.getClassName();
             if (evClass != null) {
                 String clsStr = evClass.toString();
@@ -886,11 +912,11 @@ public class BlockerService extends AccessibilityService {
                             hasFAB = false;
                             hasRecyclerView = false;
                             
-                            scanDocsUI(root);
+                            scanDocsUIOptimized(root, 0);
                             
                             // Highly specific match for "From Web" search browser inside Google Docs
                             if (hasWebView && hasLeftArrow && !hasFormattingBar && !hasHamburgerMenu && !hasFAB) {
-                                if (isWebSearchExplicit || (hasEditText && hasSearchIcon) || (hasEditText && hasProgressBar)) {
+                                if (hasEditText || isWebSearchExplicit || (hasEditText && hasSearchIcon) || (hasEditText && hasProgressBar)) {
                                     doGoogleDocsBlock(true);
                                     return;
                                 }
@@ -1048,7 +1074,8 @@ public class BlockerService extends AccessibilityService {
         hasFAB = false;
         hasRecyclerView = false;
         
-        scanDocsUI(root);
+        boolean matched = scanDocsUIOptimized(root, 0);
+        if (matched) return true;
         
         if (isWebSearchExplicit) return true;
         
@@ -1120,8 +1147,8 @@ public class BlockerService extends AccessibilityService {
         return false;
     }
 
-    private void scanDocsUI(AccessibilityNodeInfo node) {
-        if (node == null) return;
+    private boolean scanDocsUIOptimized(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 12) return false;
         
         // Detect UI Structures
         if (node.getClassName() != null) {
@@ -1173,18 +1200,22 @@ public class BlockerService extends AccessibilityService {
             }
         }
         
-        for (int i = 0; i < node.getChildCount(); i++) {
+        // Fast exit: stop scanning once we have enough signals
+        if (isWebSearchExplicit) return true;
+        if (hasLeftArrow && hasWebView) return true;
+        if (hasLeftArrow && hasEditText && hasProgressBar) return true;
+        
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
             AccessibilityNodeInfo child = node.getChild(i);
-            scanDocsUI(child);
-            if (child != null) child.recycle();
-            
-            // Fast exit: stop scanning once we have enough signals
-            if (isWebSearchExplicit) return;
-            // NOTE: Do NOT early-exit on hasWebView alone — Google Docs editor IS a WebView.
-            // We must continue scanning to find formatting bar, hamburger menu, etc.
-            if (hasLeftArrow && hasWebView) return;
-            if (hasLeftArrow && hasEditText && hasProgressBar) return;
+            if (child != null) {
+                boolean match = scanDocsUIOptimized(child, depth + 1);
+                child.recycle();
+                if (match) return true;
+            }
         }
+        
+        return false;
     }
 
     private boolean isFromWebNodeOrChildren(AccessibilityNodeInfo node, int depth) {
