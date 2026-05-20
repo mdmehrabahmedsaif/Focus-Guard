@@ -709,7 +709,7 @@ public class BlockerService extends AccessibilityService {
      * to eliminate double-backing while allowing instant back-to-back blocks for new clicks.
      */
     private void doGoogleDocsBlock(boolean force) {
-        if (!hasBlockedCurrentSearch) {
+        if (force || !hasBlockedCurrentSearch) {
             hasBlockedCurrentSearch = true;
             kickOutToGoogleDocsHome();
             stopBrowserKillLoop();
@@ -914,6 +914,13 @@ public class BlockerService extends AccessibilityService {
         }
 
         if (!isBrowserKillLoopActive && isWatchdogTriggered) {
+            // SAFETY GUARD: If the package is NOT Google Docs itself, do NOT run the fallback watchdog.
+            // This prevents the fallback watchdog from accidentally blocking external browsers (like Chrome)
+            // when they are opened normally by the user outside of a Google Docs "From web" click session.
+            if (!PKG_GOOGLE_DOCS.equals(pkgName)) {
+                return;
+            }
+
             CharSequence evClass = event.getClassName();
             String clsStr = evClass != null ? evClass.toString() : "";
             
