@@ -766,8 +766,8 @@ public class BlockerService extends AccessibilityService {
             if (isBrowserKillLoopActive) {
                 long elapsed = System.currentTimeMillis() - browserKillLoopStartTime;
                 if (elapsed < 2100) {
-                    // Ultra-rapid polling (3ms) in the critical first 600ms, then 12ms for CPU health
-                    long delay = (elapsed < 600) ? 3L : 12L;
+                    // Balanced polling (50ms) in the critical first 600ms, then 150ms to keep main thread free for event delivery
+                    long delay = (elapsed < 600) ? 50L : 150L;
                     mainHandler.postDelayed(this, delay);
                 } else {
                     isBrowserKillLoopActive = false;
@@ -787,7 +787,6 @@ public class BlockerService extends AccessibilityService {
         performGlobalAction(GLOBAL_ACTION_BACK);
         performGlobalAction(GLOBAL_ACTION_BACK);
         performGlobalAction(GLOBAL_ACTION_BACK);
-        lastGoogleDocsBlockTime = System.currentTimeMillis();
         
         // Start the self-scheduling loop immediately
         mainHandler.post(browserKillRunnable);
@@ -884,47 +883,63 @@ public class BlockerService extends AccessibilityService {
         }
 
         // ===== FALLBACK WATCHDOG FOR SERVICE RESTART / MISSED CLICK =====
-        // Runs on window state change even if kill loop is inactive, using highly-specific structural matches
-        if (!isBrowserKillLoopActive && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        // Runs on window state changes, or content changes involving a WebView
+        boolean isWatchdogTriggered = false;
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            isWatchdogTriggered = true;
+        } else if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && PKG_GOOGLE_DOCS.equals(pkgName)) {
             CharSequence evClass = event.getClassName();
-            if (evClass != null) {
-                String clsStr = evClass.toString();
-                // 1. If it is explicitly one of the search activities, block immediately
-                if (clsStr.contains("ExploreActivity") || clsStr.contains("WebSearch") || clsStr.contains("CustomTab")) {
-                    doGoogleDocsBlock(true);
-                    return;
+            if (evClass != null && evClass.toString().contains("WebView")) {
+                isWatchdogTriggered = true;
+            } else {
+                AccessibilityNodeInfo source = event.getSource();
+                if (source != null) {
+                    CharSequence srcClass = source.getClassName();
+                    if (srcClass != null && srcClass.toString().toLowerCase().contains("webview")) {
+                        isWatchdogTriggered = true;
+                    }
+                    source.recycle();
                 }
-                
-                // 2. If it is a WebView, check if it contains highly-specific "From Web" search browser UI markers
-                if (clsStr.contains("WebView")) {
-                    AccessibilityNodeInfo root = getRootInActiveWindow();
-                    if (root != null) {
-                        try {
-                            isWebSearchExplicit = false;
-                            hasSearchIcon = false;
-                            hasFormattingBar = false;
-                            hasWebDomain = false;
-                            hasLeftArrow = false;
-                            hasWebView = false;
-                            hasProgressBar = false;
-                            hasEditText = false;
-                            hasHamburgerMenu = false;
-                            hasFAB = false;
-                            hasRecyclerView = false;
-                            
-                            scanDocsUIOptimized(root, 0);
-                            
-                            // Highly specific match for "From Web" search browser inside Google Docs
-                            if (hasWebView && hasLeftArrow && !hasFormattingBar && !hasHamburgerMenu && !hasFAB) {
-                                if (hasEditText || isWebSearchExplicit || (hasEditText && hasSearchIcon) || (hasEditText && hasProgressBar)) {
-                                    doGoogleDocsBlock(true);
-                                    return;
-                                }
-                            }
-                        } finally {
-                            root.recycle();
+            }
+        }
+
+        if (!isBrowserKillLoopActive && isWatchdogTriggered) {
+            CharSequence evClass = event.getClassName();
+            String clsStr = evClass != null ? evClass.toString() : "";
+            
+            // 1. If it is explicitly one of the search activities, block immediately
+            if (clsStr.contains("ExploreActivity") || clsStr.contains("WebSearch") || clsStr.contains("CustomTab")) {
+                doGoogleDocsBlock(true);
+                return;
+            }
+            
+            // 2. Otherwise check layout tree
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    isWebSearchExplicit = false;
+                    hasSearchIcon = false;
+                    hasFormattingBar = false;
+                    hasWebDomain = false;
+                    hasLeftArrow = false;
+                    hasWebView = false;
+                    hasProgressBar = false;
+                    hasEditText = false;
+                    hasHamburgerMenu = false;
+                    hasFAB = false;
+                    hasRecyclerView = false;
+                    
+                    scanDocsUIOptimized(root, 0);
+                    
+                    // Highly specific match for "From Web" search browser inside Google Docs
+                    if (hasWebView && hasLeftArrow && !hasFormattingBar && !hasHamburgerMenu && !hasFAB) {
+                        if (isWebSearchExplicit || hasWebDomain || (hasEditText && hasSearchIcon)) {
+                            doGoogleDocsBlock(true);
+                            return;
                         }
                     }
+                } finally {
+                    root.recycle();
                 }
             }
         }
@@ -959,9 +974,6 @@ public class BlockerService extends AccessibilityService {
         if (isBrowserKillLoopActive) {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-
-                long now = System.currentTimeMillis();
-                if (now - lastGoogleDocsBlockTime < 100) return;
 
                 AccessibilityNodeInfo root = getRootInActiveWindow();
                 if (root == null) return;
