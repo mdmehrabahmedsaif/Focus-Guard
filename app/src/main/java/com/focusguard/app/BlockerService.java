@@ -970,6 +970,7 @@ public class BlockerService extends AccessibilityService {
                 }
             }
         }
+    }
 
     private boolean isWebSearchExplicit = false;
     private boolean hasSearchIcon = false;
