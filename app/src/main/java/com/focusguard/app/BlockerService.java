@@ -93,6 +93,28 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
 
+        // 1. Gemini standalone app is always allowed and whitelisted
+        if ("com.google.android.apps.bard".equals(pkgName)) {
+            return;
+        }
+
+        // 2. Ultra-fast Google Assistant & Google App Blocker (0.00s response)
+        if (prefManager.isGoogleAssistantBlocked()) {
+            if (PKG_GOOGLE_ASSISTANT.equals(pkgName)) {
+                performGlobalAction(GLOBAL_ACTION_HOME);
+                return;
+            }
+            if (PKG_GOOGLE_APP.equals(pkgName)) {
+                if (isGeminiOverlay(event)) {
+                    // Allow Gemini voice assistant overlay
+                    return;
+                }
+                // Otherwise block Google App / Assistant instantly
+                performGlobalAction(GLOBAL_ACTION_HOME);
+                return;
+            }
+        }
+
         // Remove overlay if we leave blocked packages
         if (!isGoogleDocsPackage(pkgName) && !PKG_WHATSAPP.equals(pkgName)) {
             dismissOverlayWithAnimation();
@@ -140,27 +162,18 @@ public class BlockerService extends AccessibilityService {
             }
         } 
         
-        // Google Assistant (Standalone)
-        if (PKG_GOOGLE_ASSISTANT.equals(pkgName)) {
-            if (prefManager.isGoogleAssistantBlocked()) {
-                performGlobalAction(GLOBAL_ACTION_HOME);
-            }
-        } 
-        
-        // Google Assistant (Overlay) or Google Docs
-        if (PKG_GOOGLE_APP.equals(pkgName) && prefManager.isGoogleAssistantBlocked() && isGoogleAssistantOverlay(event, pkgName)) {
-            performGlobalAction(GLOBAL_ACTION_HOME);
-        } else if (isGoogleDocsPackage(pkgName) || 
-                   "com.google.android.gms".equals(pkgName) || 
-                   "com.google.android.googlequicksearchbox".equals(pkgName) || 
-                   "com.android.chrome".equals(pkgName) || 
-                   "com.google.android.webview".equals(pkgName) || 
-                   "com.android.webview".equals(pkgName) ||
-                   pkgName.contains("browser") || 
-                   pkgName.contains("firefox") || 
-                   pkgName.contains("opera") || 
-                   pkgName.contains("searchbox") || 
-                   pkgName.contains("websearch")) {
+        // Google Docs and search components
+        if (isGoogleDocsPackage(pkgName) || 
+            "com.google.android.gms".equals(pkgName) || 
+            "com.google.android.googlequicksearchbox".equals(pkgName) || 
+            "com.android.chrome".equals(pkgName) || 
+            "com.google.android.webview".equals(pkgName) || 
+            "com.android.webview".equals(pkgName) ||
+            pkgName.contains("browser") || 
+            pkgName.contains("firefox") || 
+            pkgName.contains("opera") || 
+            pkgName.contains("searchbox") || 
+            pkgName.contains("websearch")) {
             if (prefManager.isGoogleDocsBlocked()) {
                 handleGoogleDocs(event, eventType, pkgName);
             }
@@ -1558,50 +1571,51 @@ public class BlockerService extends AccessibilityService {
         return sb.toString();
     }
 
-    private boolean isGoogleAssistantOverlay(AccessibilityEvent event, String pkgName) {
-        if (!PKG_GOOGLE_APP.equals(pkgName)) return false;
-
+    private boolean isGeminiOverlay(AccessibilityEvent event) {
         String text = getEventText(event).toLowerCase();
-        if (text.contains("assistant") || 
-            text.contains("hey google") || 
-            text.contains("ok google") ||
-            text.contains("voice search") ||
-            text.contains("অ্যাসিস্ট্যান্ট") ||
-            text.contains("অ্যাসিস্টেন্ট")) {
+        if (text.contains("gemini") || text.contains("bard") || text.contains("জেমিনি")) {
             return true;
         }
 
         AccessibilityNodeInfo source = event.getSource();
         if (source != null) {
-            boolean isAssis = isGoogleAssistantNodeDeep(source, 0);
-            source.recycle();
-            return isAssis;
+            try {
+                if (isGeminiNodeDeep(source, 0)) {
+                    return true;
+                }
+            } finally {
+                source.recycle();
+            }
         }
         return false;
     }
 
-    private boolean isGoogleAssistantNodeDeep(AccessibilityNodeInfo node, int depth) {
+    private boolean isGeminiNodeDeep(AccessibilityNodeInfo node, int depth) {
         if (node == null || depth > 5) return false;
-        
+
         CharSequence txt = node.getText();
         if (txt != null) {
             String s = txt.toString().toLowerCase();
-            if (s.contains("assistant") || s.contains("hey google") || s.contains("ok google") || s.contains("voice search") || s.contains("অ্যাসিস্ট্যান্ট") || s.contains("অ্যাসিস্টেন্ট")) return true;
+            if (s.contains("gemini") || s.contains("bard") || s.contains("জেমিনি")) return true;
         }
-        
+
         CharSequence desc = node.getContentDescription();
         if (desc != null) {
             String s = desc.toString().toLowerCase();
-            if (s.contains("assistant") || s.contains("hey google") || s.contains("ok google") || s.contains("voice search") || s.contains("অ্যাসিস্ট্যান্ট") || s.contains("অ্যাসিস্টেন্ট")) return true;
+            if (s.contains("gemini") || s.contains("bard") || s.contains("জেমিনি")) return true;
         }
-        
+
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
-            if (isGoogleAssistantNodeDeep(child, depth + 1)) {
-                if (child != null) child.recycle();
-                return true;
+            if (child != null) {
+                try {
+                    if (isGeminiNodeDeep(child, depth + 1)) {
+                        return true;
+                    }
+                } finally {
+                    child.recycle();
+                }
             }
-            if (child != null) child.recycle();
         }
         return false;
     }
