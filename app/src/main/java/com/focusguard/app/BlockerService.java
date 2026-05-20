@@ -54,8 +54,7 @@ public class BlockerService extends AccessibilityService {
         }
     };
 
-    private View touchShieldView = null;
-    private Rect currentShieldRect = null;
+    // No touchShieldView fields needed for the pure event-driven interceptor
 
     private PreferenceManager prefManager;
     private static BlockerService instance;
@@ -71,7 +70,7 @@ public class BlockerService extends AccessibilityService {
 
     @Override
     public boolean onUnbind(Intent intent) {
-        removeTouchShield();
+        dismissOverlayWithAnimation();
         instance = null;
         return super.onUnbind(intent);
     }
@@ -90,9 +89,10 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
 
-        // Remove touch shield if we leave Google Docs package
+        // Remove overlay if we leave Google Docs package
         if (!isGoogleDocsPackage(pkgName)) {
-            removeTouchShield();
+            dismissOverlayWithAnimation();
+            stopBrowserKillLoop();
         }
 
         int eventType = event.getEventType();
@@ -772,11 +772,13 @@ public class BlockerService extends AccessibilityService {
         public void run() {
             if (!isBrowserKillLoopActive) return;
             
+            boolean isSearchActive = false;
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root != null) {
                 try {
                     // Check if browser/search page exists using structural detection
                     if (checkDocsSearchDeep(root)) {
+                        isSearchActive = true;
                         doGoogleDocsBlock();
                     }
                 } finally {
@@ -784,14 +786,26 @@ public class BlockerService extends AccessibilityService {
                 }
             }
             
+            long elapsed = System.currentTimeMillis() - browserKillLoopStartTime;
+            
+            // Dynamic Dismissal Check:
+            // If the search window is NOT active (screen is clean):
+            // And either we have already successfully blocked the search (hasBlockedCurrentSearch == true)
+            // Or a reasonable minimum transition duration has passed (e.g. 300ms) to ensure we don't dismiss early
+            if (!isSearchActive && (hasBlockedCurrentSearch || elapsed > 300)) {
+                dismissOverlayWithAnimation();
+                isBrowserKillLoopActive = false;
+                return;
+            }
+            
             // Self-schedule the next iteration dynamically
             if (isBrowserKillLoopActive) {
-                long elapsed = System.currentTimeMillis() - browserKillLoopStartTime;
                 if (elapsed < 2100) {
-                    // Balanced polling (15ms) in the critical first 600ms, then 100ms to keep main thread free for event delivery
+                    // Balanced polling (15ms) in the critical first 600ms, then 100ms
                     long delay = (elapsed < 600) ? 15L : 100L;
                     mainHandler.postDelayed(this, delay);
                 } else {
+                    dismissOverlayWithAnimation();
                     isBrowserKillLoopActive = false;
                 }
             }
@@ -808,18 +822,22 @@ public class BlockerService extends AccessibilityService {
         // Run immediately to catch any instant transitions synchronously
         browserKillRunnable.run();
         
-        // Safety auto-stop after 2.1 seconds
+        // Safety auto-stop and clean up after 1500ms (safety timeout)
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                isBrowserKillLoopActive = false;
+                if (isBrowserKillLoopActive) {
+                    isBrowserKillLoopActive = false;
+                    dismissOverlayWithAnimation();
+                }
             }
-        }, 2100);
+        }, 1500);
     }
 
     private void stopBrowserKillLoop() {
         isBrowserKillLoopActive = false;
         mainHandler.removeCallbacks(browserKillRunnable);
+        dismissOverlayWithAnimation();
     }
 
     /**
@@ -870,18 +888,7 @@ public class BlockerService extends AccessibilityService {
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType, String pkgName) {
-        // Proactively update the touch shield position and state
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root != null) {
-                try {
-                    updateTouchShield(root);
-                } finally {
-                    root.recycle();
-                }
-            }
-        }
+        // Pure event-driven flow: no touch shield updates to eliminate typing lag entirely!
 
         // Reset block state when the user is back in the normal editor
         if (hasBlockedCurrentSearch) {
@@ -1268,7 +1275,8 @@ public class BlockerService extends AccessibilityService {
             if (wm == null) return;
 
             final View overlayView = new View(this);
-            overlayView.setBackgroundColor(Color.BLACK);
+            overlayView.setBackgroundColor(Color.parseColor("#1A1A24")); // Premium Slate Grey
+            overlayView.setAlpha(1f);
 
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -1284,188 +1292,43 @@ public class BlockerService extends AccessibilityService {
             wm.addView(overlayView, params);
             activeOverlayView = overlayView;
 
-            mainHandler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    synchronized (BlockerService.this) {
-                        if (activeOverlayView == overlayView) {
-                            try {
-                                wm.removeView(overlayView);
-                            } catch (Exception ignored) {}
-                            activeOverlayView = null;
-                        }
-                    }
-                }
-            }, 350);
-
         } catch (Exception ignored) {}
     }
 
-    // =========================================================================
-    // TOUCH SHIELD OVERLAY INTERCEPTION
-    // =========================================================================
+    private synchronized void dismissOverlayWithAnimation() {
+        if (activeOverlayView == null) return;
+        final View overlay = activeOverlayView;
+        activeOverlayView = null; // Mark as null immediately to prevent double dismissal
 
-    private AccessibilityNodeInfo findFromWebNode(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > 10) return null;
-        
-        CharSequence txt = node.getText();
-        if (txt != null) {
-            String s = txt.toString().toLowerCase();
-            if (s.contains("from web") || 
-                s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
-                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
-                s.contains("वेब से") || 
-                s.contains("desde la web") || s.contains("de la web") ||
-                s.contains("da web")) {
-                return AccessibilityNodeInfo.obtain(node);
-            }
-        }
-        
-        CharSequence desc = node.getContentDescription();
-        if (desc != null) {
-            String s = desc.toString().toLowerCase();
-            if (s.contains("from web") || 
-                s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
-                s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
-                s.contains("वेब से") || 
-                s.contains("desde la web") || s.contains("de la web") ||
-                s.contains("da web")) {
-                return AccessibilityNodeInfo.obtain(node);
-            }
-        }
-        
-        int childCount = node.getChildCount();
-        for (int i = 0; i < childCount; i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child != null) {
-                AccessibilityNodeInfo found = findFromWebNode(child, depth + 1);
-                child.recycle();
-                if (found != null) return found;
-            }
-        }
-        
-        return null;
-    }
-
-    private AccessibilityNodeInfo findClickableFromWebRow(AccessibilityNodeInfo root) {
-        AccessibilityNodeInfo textNode = findFromWebNode(root, 0);
-        if (textNode == null) return null;
-        
-        AccessibilityNodeInfo current = textNode;
-        int depth = 0;
-        while (current != null && depth < 3) {
-            if (current.isClickable()) {
-                if (current != textNode) {
-                    textNode.recycle();
-                }
-                return current;
-            }
-            AccessibilityNodeInfo parent = current.getParent();
-            if (current != textNode) {
-                current.recycle();
-            }
-            current = parent;
-            depth++;
-        }
-        return textNode;
-    }
-
-    private synchronized void updateTouchShield(AccessibilityNodeInfo root) {
-        AccessibilityNodeInfo targetNode = findClickableFromWebRow(root);
-        if (targetNode == null) {
-            removeTouchShield();
-            return;
-        }
-
-        Rect rect = new Rect();
-        targetNode.getBoundsInScreen(rect);
-        targetNode.recycle();
-
-        if (rect.isEmpty() || rect.width() <= 0 || rect.height() <= 0) {
-            removeTouchShield();
-            return;
-        }
-
-        if (touchShieldView != null) {
-            if (rect.equals(currentShieldRect)) {
-                return;
-            }
-            try {
-                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-                if (wm != null) {
-                    WindowManager.LayoutParams params = (WindowManager.LayoutParams) touchShieldView.getLayoutParams();
-                    params.x = rect.left;
-                    params.y = rect.top;
-                    params.width = rect.width();
-                    params.height = rect.height();
-                    wm.updateViewLayout(touchShieldView, params);
-                    currentShieldRect = new Rect(rect);
-                    return;
-                }
-            } catch (Exception e) {
-                removeTouchShield();
-            }
-        }
-
-        try {
-            final WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-            if (wm == null) return;
-
-            final View shield = new View(this);
-            shield.setBackgroundColor(Color.argb(90, 120, 120, 120)); // Subtle grey overlay (opacity ~35%)
-
-            shield.setOnTouchListener(new View.OnTouchListener() {
-                private long lastTapTime = 0;
-                
-                @Override
-                public boolean onTouch(View v, MotionEvent event) {
-                    if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                        long now = System.currentTimeMillis();
-                        if (now - lastTapTime > 1500) {
-                            lastTapTime = now;
-                            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
-                            
-                            performGlobalAction(GLOBAL_ACTION_BACK);
-                            
-                            Toast.makeText(BlockerService.this, 
-                                "FocusGuard: Web Search is blocked!", 
-                                Toast.LENGTH_SHORT).show();
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    overlay.animate()
+                        .alpha(0f)
+                        .setDuration(150)
+                        .withEndAction(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                                    if (wm != null) {
+                                        wm.removeView(overlay);
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                        })
+                        .start();
+                } catch (Exception e) {
+                    try {
+                        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                        if (wm != null) {
+                            wm.removeView(overlay);
                         }
-                    }
-                    return true;
+                    } catch (Exception ignored) {}
                 }
-            });
-
-            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                rect.width(),
-                rect.height(),
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT
-            );
-            params.gravity = Gravity.TOP | Gravity.LEFT;
-            params.x = rect.left;
-            params.y = rect.top;
-
-            wm.addView(shield, params);
-            touchShieldView = shield;
-            currentShieldRect = new Rect(rect);
-        } catch (Exception ignored) {}
-    }
-
-    private synchronized void removeTouchShield() {
-        if (touchShieldView != null) {
-            try {
-                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-                if (wm != null) {
-                    wm.removeView(touchShieldView);
-                }
-            } catch (Exception ignored) {}
-            touchShieldView = null;
-            currentShieldRect = null;
-        }
+            }
+        });
     }
 
     // =========================================================================
