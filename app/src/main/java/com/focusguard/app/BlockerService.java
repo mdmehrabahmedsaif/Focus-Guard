@@ -742,23 +742,6 @@ public class BlockerService extends AccessibilityService {
         return 0; // Safe
     }
 
-    private boolean isAncestorSelected(AccessibilityNodeInfo node) {
-        if (node == null) return false;
-        AccessibilityNodeInfo current = node.getParent();
-        int depth = 0;
-        while (current != null && depth < 8) {
-            if (current.isSelected()) {
-                current.recycle();
-                return true;
-            }
-            AccessibilityNodeInfo parent = current.getParent();
-            current.recycle();
-            current = parent;
-            depth++;
-        }
-        return false;
-    }
-
     private boolean switchToWhatsAppChats(AccessibilityNodeInfo root) {
         String[] chatTabs = {"Chats", "চ্যাট"};
         for (String tab : chatTabs) {
