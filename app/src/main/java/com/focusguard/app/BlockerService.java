@@ -537,7 +537,7 @@ public class BlockerService extends AccessibilityService {
         showInstantZeroFlashOverlay();
         
         if (reason == 1) {
-            // Tab Block - Try to switch to Chats. If it fails, go Back.
+            // Tab Block - Try to switch to Chats.
             boolean switched = false;
             if (root != null) {
                 switched = switchToWhatsAppChats(root);
@@ -551,9 +551,8 @@ public class BlockerService extends AccessibilityService {
                     }
                 }
             }
-            if (!switched) {
-                performGlobalAction(GLOBAL_ACTION_BACK);
-            }
+            // NEVER perform GLOBAL_ACTION_BACK for Tab Block (reason == 1)!
+            // This prevents kicking the user out of WhatsApp when redirecting to Chats.
         } else if (reason == 2) {
             // Channel Block - Instantly go Back
             performGlobalAction(GLOBAL_ACTION_BACK);
@@ -637,9 +636,11 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // ===== FAST PATH #2: Fallback Watchdog on window/content changes =====
+        // ===== FAST PATH #2: Fallback Watchdog on window/content changes, scroll, or selection events =====
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+            eventType == AccessibilityEvent.TYPE_VIEW_SELECTED) {
             
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root != null) {
@@ -743,34 +744,82 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean switchToWhatsAppChats(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        
+        // 1. Try fast exact match list first
         String[] chatTabs = {"Chats", "চ্যাট"};
         for (String tab : chatTabs) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(tab);
-            for (AccessibilityNodeInfo node : nodes) {
-                if (node == null) continue;
-                
-                if (isEditableNode(node) || isInsideChatList(node)) {
-                    node.recycle();
-                    continue;
-                }
-
-                CharSequence text = node.getText();
-                CharSequence desc = node.getContentDescription();
-                
-                boolean exactMatch = false;
-                if (text != null && text.toString().equalsIgnoreCase(tab)) exactMatch = true;
-                if (desc != null && desc.toString().toLowerCase().contains(tab.toLowerCase())) exactMatch = true;
-                
-                if (exactMatch) {
-                    if (clickNodeOrParent(node)) {
+            if (nodes != null) {
+                for (AccessibilityNodeInfo node : nodes) {
+                    if (node == null) continue;
+                    
+                    if (isEditableNode(node) || isInsideChatList(node)) {
                         node.recycle();
-                        return true;
+                        continue;
                     }
+
+                    CharSequence text = node.getText();
+                    CharSequence desc = node.getContentDescription();
+                    
+                    boolean exactMatch = false;
+                    if (text != null && text.toString().equalsIgnoreCase(tab)) exactMatch = true;
+                    if (desc != null && desc.toString().toLowerCase().contains(tab.toLowerCase())) exactMatch = true;
+                    
+                    if (exactMatch) {
+                        if (clickNodeOrParent(node)) {
+                            node.recycle();
+                            return true;
+                        }
+                    }
+                    node.recycle();
                 }
-                node.recycle();
             }
         }
+        
+        // 2. Fallback to highly robust recursive tree-traversal (Sub-millisecond)
+        AccessibilityNodeInfo chatsTab = findChatsTabNode(root);
+        if (chatsTab != null) {
+            boolean clicked = clickNodeOrParent(chatsTab);
+            chatsTab.recycle();
+            return clicked;
+        }
+        
         return false;
+    }
+
+    private AccessibilityNodeInfo findChatsTabNode(AccessibilityNodeInfo node) {
+        if (node == null) return null;
+
+        // Skip editable nodes and chat list elements to avoid false positives inside open chats
+        if (isEditableNode(node) || isInsideChatList(node)) {
+            return null;
+        }
+
+        CharSequence t = node.getText();
+        CharSequence d = node.getContentDescription();
+        String text = t != null ? t.toString().trim().toLowerCase() : "";
+        String desc = d != null ? d.toString().trim().toLowerCase() : "";
+
+        // Tab identifiers (English + Bengali)
+        boolean matchesText = text.equals("chats") || text.equals("চ্যাট") || text.equals("চ্যাটস") || text.equals("chat");
+        boolean matchesDesc = desc.equals("chats") || desc.equals("চ্যাট") || desc.contains("chats, tab") || desc.contains("চ্যাট, ট্যাব");
+
+        if (matchesText || matchesDesc) {
+            return AccessibilityNodeInfo.obtain(node);
+        }
+
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) continue;
+            AccessibilityNodeInfo found = findChatsTabNode(child);
+            child.recycle();
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
     }
 
     private boolean isEditableNode(AccessibilityNodeInfo node) {
