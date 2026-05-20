@@ -100,8 +100,6 @@ public class BlockerService extends AccessibilityService {
                 }
             }
         }
-            }
-        }
 
         // App Blocking logic (WhatsApp, YouTube, Instagram)
         if (PKG_WHATSAPP.equals(pkgName)) {
