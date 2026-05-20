@@ -786,36 +786,7 @@ public class BlockerService extends AccessibilityService {
      * NO cooldown here — every click must be handled.
      */
     private void doFromWebClickBlock() {
-        stopImagePanelWatchdog();
         startBrowserKillLoop();
-    }
-
-    /**
-     * Instantly dismisses the Image panel.
-     */
-    private void dismissImagePanel() {
-        doGoogleDocsBlock();
-    }
-
-    /**
-     * ZERO-IPC event text pre-check. Reads text already present in the
-     * AccessibilityEvent object — no Binder IPC, no tree traversal.
-     * This is the fastest possible detection path (<0.001s).
-     */
-    private boolean checkGoogleDocsEventText(AccessibilityEvent event) {
-        List<CharSequence> texts = event.getText();
-        if (texts != null) {
-            for (CharSequence t : texts) {
-                if (t != null && isGoogleDocsSearchText(t.toString())) {
-                    return true;
-                }
-            }
-        }
-        CharSequence desc = event.getContentDescription();
-        if (desc != null && isGoogleDocsSearchText(desc.toString())) {
-            return true;
-        }
-        return false;
     }
 
     /**
@@ -825,9 +796,8 @@ public class BlockerService extends AccessibilityService {
     private boolean isGoogleDocsSearchText(String text) {
         String s = text.toLowerCase();
         return s.contains("search your docs and the web") ||
-               s.contains("আপনার ডক্স এবং ওয়েব") ||
-               s.contains("আপনার দস্তাবেজ এবং ওয়েব") ||
-               s.contains("search images") ||
+               s.contains("আপনার ডক্স এবং ওযেব") ||
+               s.contains("Search images") ||
                s.contains("ছবি খুঁজুন") ||
                s.contains("find images, facts and text") ||
                s.contains("search directly in docs") ||
@@ -848,77 +818,15 @@ public class BlockerService extends AccessibilityService {
                s.contains("search the web");
     }
 
-    private boolean isImagePanelWatchdogActive = false;
-
-    /**
-     * Watchdog: polls the screen every 80ms after Image panel opens.
-     * If the search page appears, it blocks INSTANTLY.
-     */
-    private final Runnable watchdogRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (!isImagePanelWatchdogActive) return;
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            try {
-                // Quick check: is the search page open?
-                if (!root.findAccessibilityNodeInfosByText("Search your docs and the web").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty()) {
-                    isImagePanelWatchdogActive = false;
-                    doGoogleDocsBlock();
-                    return;
-                }
-                // Also run deep scan
-                if (checkDocsSearchDeep(root)) {
-                    isImagePanelWatchdogActive = false;
-                    doGoogleDocsBlock();
-                    return;
-                }
-                // DO NOT stop watchdog here. If the user clicked "From web", the UI transitions
-                // to the search page, so "From web" will disappear. We WANT the watchdog to keep
-                // polling while the new page loads! It will naturally time out after 3 seconds.
-            } finally {
-                root.recycle();
-            }
-        }
-    };
-
-    private void startImagePanelWatchdog() {
-        if (isImagePanelWatchdogActive) return;
-        isImagePanelWatchdogActive = true;
-        // Poll every 20ms for 3 seconds (150 polls) — extreme detection speed
-        for (int i = 1; i <= 150; i++) {
-            mainHandler.postDelayed(watchdogRunnable, i * 20L);
-        }
-        // Auto-stop after 3 seconds
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                isImagePanelWatchdogActive = false;
-            }
-        }, 3000);
-    }
-
-    private void stopImagePanelWatchdog() {
-        isImagePanelWatchdogActive = false;
-    }
-
     private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
         // ===== ABSOLUTE ZERO-IPC WEBVIEW KICKOUT (<0.0001s) =====
-        // Only run when the click or watchdog was recently triggered, to avoid blocking the normal document editor
-        if (isBrowserKillLoopActive || isImagePanelWatchdogActive) {
+        // Only run when the click was recently triggered, to avoid blocking the normal document editor
+        if (isBrowserKillLoopActive) {
             CharSequence evClass = event.getClassName();
             if (evClass != null) {
                 String clsStr = evClass.toString();
                 if (clsStr.contains("WebView") || clsStr.contains("WebSearch") || 
                     clsStr.contains("CustomTab") || clsStr.contains("ExploreActivity")) {
-                    stopImagePanelWatchdog();
                     doGoogleDocsBlock(true); // Bypass cooldown for instant close
                     return;
                 }
@@ -927,8 +835,8 @@ public class BlockerService extends AccessibilityService {
 
         // ===== 1-IPC WEBVIEW KICKOUT =====
         // If a WebView is added or changes content, its source will be a WebView.
-        // Only run when the click or watchdog was recently triggered, to avoid blocking the normal document editor.
-        if (isBrowserKillLoopActive || isImagePanelWatchdogActive) {
+        // Only run when the click was recently triggered, to avoid blocking the normal document editor.
+        if (isBrowserKillLoopActive) {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 AccessibilityNodeInfo source = event.getSource();
@@ -936,43 +844,10 @@ public class BlockerService extends AccessibilityService {
                     CharSequence srcClass = source.getClassName();
                     if (srcClass != null && srcClass.toString().toLowerCase().contains("webview")) {
                         source.recycle();
-                        stopImagePanelWatchdog();
                         doGoogleDocsBlock(true); // Bypass cooldown for instant close
                         return;
                     }
                     source.recycle();
-                }
-            }
-        }
-
-        // ===== ULTRA-FAST PATH #0: Event text pre-check (ZERO IPC, <0.001s) =====
-        if (checkGoogleDocsEventText(event)) {
-            stopImagePanelWatchdog();
-            doGoogleDocsBlock();
-            return;
-        }
-
-        // ===== PRIORITY FAST-TRACK: Watchdog active + new window =====
-        // When Image panel was showing (watchdog active) and a NEW window opens
-        // in Google Docs, it's almost certainly the search page.
-        // "From photos"/"From camera" open EXTERNAL apps (different package),
-        // so they never trigger WINDOW_STATE_CHANGED in Google Docs.
-        // Skip ALL expensive findAccessibilityNodeInfosByText IPC calls (~18 calls
-        // = ~150ms on old devices) and go STRAIGHT to single-pass deep scan.
-        if (isImagePanelWatchdogActive && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root != null) {
-                try {
-                    if (checkDocsSearchDeep(root)) {
-                        stopImagePanelWatchdog();
-                        doGoogleDocsBlock();
-                        return;
-                    }
-                    // DO NOT check for "From web" and stop watchdog here!
-                    // This is a NEW window. "From web" will naturally be missing.
-                    // If we stop it, we kill the burst scan right when the WebView is loading!
-                } finally {
-                    root.recycle();
                 }
             }
         }
@@ -985,7 +860,6 @@ public class BlockerService extends AccessibilityService {
             String eventTxt = getEventText(event).toLowerCase();
             if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
                 eventTxt.contains("ওয়েব হতে") || eventTxt.contains("ওয়েব হতে")) {
-                stopImagePanelWatchdog();
                 doFromWebClickBlock();
                 return;
             }
@@ -995,145 +869,107 @@ public class BlockerService extends AccessibilityService {
             if (source != null) {
                 if (isFromWebNodeOrChildren(source, 0)) {
                     source.recycle();
-                    stopImagePanelWatchdog();
                     doFromWebClickBlock();
                     return;
                 }
                 source.recycle();
             }
-
-            // BURST SCAN: Ultra-rapid polling every 10ms for 300ms after any click
-            if (isImagePanelWatchdogActive) {
-                mainHandler.post(watchdogRunnable); // Check NOW (0ms)
-                for (int i = 1; i <= 30; i++) {
-                    mainHandler.postDelayed(watchdogRunnable, i * 10L);
-                }
-            }
-        }
-
-        // ===== WATCHDOG ACTIVATION: When Image panel opens =====
-        // Detects "From web" appearing on screen and starts rapid polling
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-
-            String eventTxt = getEventText(event).toLowerCase();
-            if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
-                eventTxt.contains("ওয়েব হতে") || eventTxt.contains("ওয়েব হতে")) {
-                startImagePanelWatchdog();
-            }
         }
 
         // ===== FAST PATH #2: Minimal-IPC tree search with early exit =====
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+        // Only check for search pages if the browser kill loop is currently active.
+        // This ensures 100% safety for normal document editing/viewing.
+        if (isBrowserKillLoopActive) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
 
-            long now = System.currentTimeMillis();
-            if (now - lastGoogleDocsBlockTime < 100) return;
+                long now = System.currentTimeMillis();
+                if (now - lastGoogleDocsBlockTime < 100) return;
 
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            try {
-                // Check 1: Most distinctive text — single IPC, early exit
-                List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Search your docs and the web");
-                if (!hits.isEmpty()) {
-                    for (AccessibilityNodeInfo n : hits) n.recycle();
-                    stopImagePanelWatchdog();
-                    doGoogleDocsBlock();
-                    return;
-                }
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root == null) return;
+                try {
+                    // Check 1: Most distinctive text — single IPC, early exit
+                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Search your docs and the web");
+                    if (!hits.isEmpty()) {
+                        for (AccessibilityNodeInfo n : hits) n.recycle();
+                        doGoogleDocsBlock();
+                        return;
+                    }
 
-                // Check 2: Bengali variant
-                hits = root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব");
-                if (!hits.isEmpty()) {
-                    for (AccessibilityNodeInfo n : hits) n.recycle();
-                    stopImagePanelWatchdog();
-                    doGoogleDocsBlock();
-                    return;
-                }
+                    // Check 2: Bengali variant
+                    hits = root.findAccessibilityNodeInfosByText("আপনার ডক্স এবং ওয়েব");
+                    if (!hits.isEmpty()) {
+                        for (AccessibilityNodeInfo n : hits) n.recycle();
+                        doGoogleDocsBlock();
+                        return;
+                    }
 
-                // Check 3: Other search page indicators
-                if (!root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty() ||
-                    !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty()) {
-                    stopImagePanelWatchdog();
-                    doGoogleDocsBlock();
-                    return;
-                }
+                    // Check 3: Other search page indicators
+                    if (!root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("Search images").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("ছবি খুঁজুন").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("Find images, facts and text").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("আপনার দস্তাবেজ এবং ওয়েব").isEmpty() ||
+                        !root.findAccessibilityNodeInfosByText("Search directly in Docs").isEmpty()) {
+                        doGoogleDocsBlock();
+                        return;
+                    }
 
-                // Check 3.5: FAST search bar pattern detection (← + 🔍)
-                // The search page has a "Navigate up" left arrow AND a "Search" magnifying glass.
-                // This catches the page even when specific hint text is gone (user has typed text).
-                boolean hasNavUp = !root.findAccessibilityNodeInfosByText("Navigate up").isEmpty() ||
-                                   !root.findAccessibilityNodeInfosByText("Close").isEmpty() ||
-                                   !root.findAccessibilityNodeInfosByText("Back").isEmpty() ||
-                                   !root.findAccessibilityNodeInfosByText("বন্ধ করুন").isEmpty() ||
-                                   !root.findAccessibilityNodeInfosByText("উপরে নেভিগেট করুন").isEmpty() ||
-                                   !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty() ||
-                                   !root.findAccessibilityNodeInfosByText("ব্যাক").isEmpty();
-                if (hasNavUp) {
-                    // Check for magnifying glass / search icon / clear icon
-                    boolean hasSearchBtn = !root.findAccessibilityNodeInfosByText("Search").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("অনুসন্ধান").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("সার্চ").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("Clear text").isEmpty() ||
-                                           !root.findAccessibilityNodeInfosByText("Clear").isEmpty();
-                    if (hasSearchBtn) {
-                        // Confirm we are NOT in normal editor (no formatting bar)
-                        boolean hasFormatBar = !root.findAccessibilityNodeInfosByText("Bold").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("বোল্ড").isEmpty() ||
-                                               !root.findAccessibilityNodeInfosByText("Edit").isEmpty();
-                        if (!hasFormatBar) {
-                            stopImagePanelWatchdog();
-                            doGoogleDocsBlock();
+                    // Check 3.5: FAST search bar pattern detection (← + 🔍)
+                    boolean hasNavUp = !root.findAccessibilityNodeInfosByText("Navigate up").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("Close").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("Back").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("বন্ধ করুন").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("উপরে নেভিগেট করুন").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("ফিরে যান").isEmpty() ||
+                                       !root.findAccessibilityNodeInfosByText("ব্যাক").isEmpty();
+                    if (hasNavUp) {
+                        boolean hasSearchBtn = !root.findAccessibilityNodeInfosByText("Search").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("অনুসন্ধান").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("সার্চ").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Search web").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("ওয়েবে খুঁজুন").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Search query").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Clear query").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Clear text").isEmpty() ||
+                                               !root.findAccessibilityNodeInfosByText("Clear").isEmpty();
+                        if (hasSearchBtn) {
+                            boolean hasFormatBar = !root.findAccessibilityNodeInfosByText("Bold").isEmpty() ||
+                                                   !root.findAccessibilityNodeInfosByText("বোল্ড").isEmpty() ||
+                                                   !root.findAccessibilityNodeInfosByText("Edit").isEmpty();
+                            if (!hasFormatBar) {
+                                doGoogleDocsBlock();
+                                return;
+                            }
+                        }
+                    }
+
+                    // Check 4: Deep scan
+                    boolean doDeepScan = false;
+                    if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                        doDeepScan = true; // Always scan on new window
+                    } else {
+                        long scanNow = System.currentTimeMillis();
+                        if (scanNow - lastDeepScanTime > 30) {
+                            doDeepScan = true;
+                        }
+                    }
+                    if (doDeepScan) {
+                        lastDeepScanTime = System.currentTimeMillis();
+                        if (checkDocsSearchDeep(root)) {
+                            doGoogleDocsBlock(hasWebView); // Bypass cooldown if WebView is present
                             return;
                         }
                     }
+                } finally {
+                    root.recycle();
                 }
-
-                // Check 4: Deep scan — NO throttle if Watchdog is active, otherwise 30ms throttle
-                boolean doDeepScan = false;
-                if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                    doDeepScan = true; // Always scan on new window
-                } else {
-                    long scanNow = System.currentTimeMillis();
-                    if (isImagePanelWatchdogActive || (scanNow - lastDeepScanTime > 30)) {
-                        doDeepScan = true;
-                    }
-                }
-                if (doDeepScan) {
-                    lastDeepScanTime = System.currentTimeMillis();
-                    if (checkDocsSearchDeep(root)) {
-                        stopImagePanelWatchdog();
-                        doGoogleDocsBlock(hasWebView); // Bypass cooldown if WebView is present
-                        return;
-                    }
-                }
-
-                // Check 5: Activate watchdog if Image panel is open (tree-based, works on ALL devices)
-                if (!isImagePanelWatchdogActive) {
-                    if (!root.findAccessibilityNodeInfosByText("From web").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("ওয়েব থেকে").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("ওয়েব হতে").isEmpty() ||
-                        !root.findAccessibilityNodeInfosByText("ওয়েব হতে").isEmpty()) {
-                        startImagePanelWatchdog();
-                    }
-                }
-            } finally {
-                root.recycle();
             }
         }
-    }
 
     private boolean isWebSearchExplicit = false;
     private boolean hasSearchIcon = false;
