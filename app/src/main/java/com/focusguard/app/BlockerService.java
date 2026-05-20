@@ -704,14 +704,15 @@ public class BlockerService extends AccessibilityService {
     }
 
     /**
-     * Fires the block with a 100ms cooldown to prevent rapid double-fire.
-     * Can be forced to bypass the cooldown.
+     * Fires the block with a strict 350ms cooldown to completely eliminate double-backing
+     * and guarantee the user remains safely inside the document editor.
      */
     private void doGoogleDocsBlock(boolean force) {
         long now = System.currentTimeMillis();
-        if (force || (now - lastGoogleDocsBlockTime >= 100)) {
+        if (now - lastGoogleDocsBlockTime >= 350) {
             lastGoogleDocsBlockTime = now;
             kickOutToGoogleDocsHome();
+            stopBrowserKillLoop();
         }
     }
 
@@ -726,7 +727,7 @@ public class BlockerService extends AccessibilityService {
      * 
      * Instead of blindly firing BACKs at fixed times (which miss the browser),
      * we start a REACTIVE kill loop that:
-     *   1. Runs every 10ms for 2 seconds (200 iterations)
+     *   1. Runs every 15ms for the first 600ms, then every 100ms
      *   2. Each iteration checks if the browser/search page structure exists
      *   3. The INSTANT it detects the browser, it fires BACK to kill it
      *   4. Keeps running even after a kill, in case the browser re-appears
@@ -734,7 +735,6 @@ public class BlockerService extends AccessibilityService {
      * This is 100% reliable because we REACT to the browser, not guess its timing.
      */
     private boolean isBrowserKillLoopActive = false;
-    private long lastBrowserKillBackTime = 0;
     private long browserKillLoopStartTime = 0;
 
     private final Runnable browserKillRunnable = new Runnable() {
@@ -747,15 +747,7 @@ public class BlockerService extends AccessibilityService {
                 try {
                     // Check if browser/search page exists using structural detection
                     if (checkDocsSearchDeep(root)) {
-                        long now = System.currentTimeMillis();
-                        // If WebView is detected, bypass cooldown to ensure sub-millisecond block!
-                        boolean force = hasWebView;
-                        // 100ms cooldown between BACKs within the kill loop to avoid over-backing
-                        if (force || (now - lastBrowserKillBackTime >= 100)) {
-                            lastBrowserKillBackTime = now;
-                            lastGoogleDocsBlockTime = now;
-                            performGlobalAction(GLOBAL_ACTION_BACK);
-                        }
+                        doGoogleDocsBlock();
                     }
                 } finally {
                     root.recycle();
@@ -766,8 +758,8 @@ public class BlockerService extends AccessibilityService {
             if (isBrowserKillLoopActive) {
                 long elapsed = System.currentTimeMillis() - browserKillLoopStartTime;
                 if (elapsed < 2100) {
-                    // Balanced polling (50ms) in the critical first 600ms, then 150ms to keep main thread free for event delivery
-                    long delay = (elapsed < 600) ? 50L : 150L;
+                    // Balanced polling (15ms) in the critical first 600ms, then 100ms to keep main thread free for event delivery
+                    long delay = (elapsed < 600) ? 15L : 100L;
                     mainHandler.postDelayed(this, delay);
                 } else {
                     isBrowserKillLoopActive = false;
@@ -783,13 +775,8 @@ public class BlockerService extends AccessibilityService {
         // Remove any existing callbacks of this runnable to prevent overlapping loops
         mainHandler.removeCallbacks(browserKillRunnable);
         
-        // Fire immediate BACKs to close the Image Panel and preemptively block the browser window
-        performGlobalAction(GLOBAL_ACTION_BACK);
-        performGlobalAction(GLOBAL_ACTION_BACK);
-        performGlobalAction(GLOBAL_ACTION_BACK);
-        
-        // Start the self-scheduling loop immediately
-        mainHandler.post(browserKillRunnable);
+        // Run immediately to catch any instant transitions synchronously
+        browserKillRunnable.run();
         
         // Safety auto-stop after 2.1 seconds
         mainHandler.postDelayed(new Runnable() {
