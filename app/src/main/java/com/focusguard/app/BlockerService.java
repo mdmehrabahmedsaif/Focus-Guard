@@ -107,9 +107,14 @@ public class BlockerService extends AccessibilityService {
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
                 handleInstagram();
             }
-        } else if (PKG_GOOGLE_DOCS.equals(pkgName)) {
+        } else if (PKG_GOOGLE_DOCS.equals(pkgName) || 
+                   "com.google.android.gms".equals(pkgName) || 
+                   "com.google.android.googlequicksearchbox".equals(pkgName) || 
+                   "com.android.chrome".equals(pkgName) || 
+                   "com.google.android.webview".equals(pkgName) || 
+                   "com.android.webview".equals(pkgName)) {
             if (prefManager.isGoogleDocsBlocked()) {
-                handleGoogleDocs(event, eventType);
+                handleGoogleDocs(event, eventType, pkgName);
             }
         }
     }
@@ -818,7 +823,7 @@ public class BlockerService extends AccessibilityService {
                s.contains("search the web");
     }
 
-    private void handleGoogleDocs(AccessibilityEvent event, int eventType) {
+    private void handleGoogleDocs(AccessibilityEvent event, int eventType, String pkgName) {
         // ===== ABSOLUTE ZERO-IPC WEBVIEW KICKOUT (<0.0001s) =====
         // Only run when the click was recently triggered, to avoid blocking the normal document editor
         if (isBrowserKillLoopActive) {
@@ -901,7 +906,7 @@ public class BlockerService extends AccessibilityService {
         // ===== FAST PATH #1: "From web" click interception =====
         // When user clicks "From web", fire rapid BACK actions to kill the browser
         // before it can even start rendering. This makes the button appear "dead".
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && PKG_GOOGLE_DOCS.equals(pkgName)) {
             // ZERO-IPC check: event text
             String eventTxt = getEventText(event).toLowerCase();
             if (eventTxt.contains("from web") || eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
