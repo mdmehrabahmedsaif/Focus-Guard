@@ -29,7 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvAdminStatus, tvAccessibilityStatus;
     private View btnEnableAdmin, btnDisableAdmin, btnEnableAccessibility, btnDisableAccessibility;
     private View btnSavePassword;
-    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swGoogleAssistant, swGoogleDocs, swBlockAcc, swBlockAdmin;
+    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swGoogleAssistant, swGoogleDocs, swParentalControls, swBlockAcc, swBlockAdmin;
     private EditText etPassword;
 
     private static final int REQ_ADMIN = 101;
@@ -67,12 +67,14 @@ public class MainActivity extends AppCompatActivity {
         setupAppRow(R.id.rowInstagram, "📸", "Instagram Reels",  "Master your time");
         setupAppRow(R.id.rowGoogleAssistant, "🎙️", "Google Assistant & App", "Block Google search & voice assistant");
         setupAppRow(R.id.rowGoogleDocs,"📝", "Google Docs",      "Block web image search");
+        setupAppRow(R.id.rowParentalControls, "👨‍👩‍👧", "Parental Controls", "Block Stop Supervision access");
 
         swWhatsApp  = findViewById(R.id.rowWhatsApp).findViewById(R.id.itemSwitch);
         swYouTube   = findViewById(R.id.rowYouTube).findViewById(R.id.itemSwitch);
         swInstagram = findViewById(R.id.rowInstagram).findViewById(R.id.itemSwitch);
         swGoogleAssistant = findViewById(R.id.rowGoogleAssistant).findViewById(R.id.itemSwitch);
         swGoogleDocs = findViewById(R.id.rowGoogleDocs).findViewById(R.id.itemSwitch);
+        swParentalControls = findViewById(R.id.rowParentalControls).findViewById(R.id.itemSwitch);
         swBlockAcc   = findViewById(R.id.switchBlockAccessibility);
         swBlockAdmin = findViewById(R.id.switchBlockDeviceAdmin);
 
@@ -124,23 +126,27 @@ public class MainActivity extends AppCompatActivity {
         // --- App Blocking Switches ---
         swWhatsApp.setOnCheckedChangeListener((b, checked) -> {
             pref.setWhatsAppBlocked(checked);
-            pref.setServiceActive(checked || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked());
+            pref.setServiceActive(checked || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isParentalControlsBlocked());
         });
         swYouTube.setOnCheckedChangeListener((b, checked) -> {
             pref.setYouTubeBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || checked || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked());
+            pref.setServiceActive(pref.isWhatsAppBlocked() || checked || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isParentalControlsBlocked());
         });
         swInstagram.setOnCheckedChangeListener((b, checked) -> {
             pref.setInstagramBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || checked || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked());
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || checked || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isParentalControlsBlocked());
         });
         swGoogleAssistant.setOnCheckedChangeListener((b, checked) -> {
             pref.setGoogleAssistantBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || checked || pref.isGoogleDocsBlocked());
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || checked || pref.isGoogleDocsBlocked() || pref.isParentalControlsBlocked());
         });
         swGoogleDocs.setOnCheckedChangeListener((b, checked) -> {
             pref.setGoogleDocsBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || checked);
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || checked || pref.isParentalControlsBlocked());
+        });
+        swParentalControls.setOnCheckedChangeListener((b, checked) -> {
+            pref.setParentalControlsBlocked(checked);
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || checked);
         });
 
         // Independent protection locks
@@ -245,6 +251,7 @@ public class MainActivity extends AppCompatActivity {
         swInstagram.setChecked(pref.isInstagramBlocked());
         swGoogleAssistant.setChecked(pref.isGoogleAssistantBlocked());
         swGoogleDocs.setChecked(pref.isGoogleDocsBlocked());
+        swParentalControls.setChecked(pref.isParentalControlsBlocked());
 
         // Protection lock switches (independent)
         swBlockAcc.setChecked(pref.isAccessibilityProtected());

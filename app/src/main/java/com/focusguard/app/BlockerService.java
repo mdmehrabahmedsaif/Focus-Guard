@@ -39,12 +39,23 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_GOOGLE_DOCS = "com.google.android.apps.docs.editors.docs";
     private static final String PKG_GOOGLE_ASSISTANT = "com.google.android.apps.googleassistant";
     private static final String PKG_GOOGLE_APP = "com.google.android.googlequicksearchbox";
+    private static final String PKG_FAMILY_LINK = "com.google.android.apps.kids.familylink";
+    private static final String PKG_FAMILY_LINK_HELPER = "com.google.android.apps.kids.familylinkhelper";
+    private static final String PKG_GMS = "com.google.android.gms";
 
     private static final String OUR_PACKAGE   = "com.focusguard.app";
     private static final String SERVICE_LABEL = "Focus Guard";
 
     private boolean isGoogleDocsPackage(String pkgName) {
         return pkgName != null && pkgName.startsWith("com.google.android.apps.docs");
+    }
+
+    private boolean isFamilyLinkPackage(String pkgName) {
+        if (pkgName == null) return false;
+        return pkgName.equals(PKG_FAMILY_LINK) || 
+               pkgName.equals(PKG_FAMILY_LINK_HELPER) || 
+               pkgName.equals(PKG_GMS) || 
+               pkgName.contains("settings");
     }
 
     private boolean isMonitoredSearchPackage(String pkgName) {
@@ -91,6 +102,7 @@ public class BlockerService extends AccessibilityService {
         stopBrowserKillLoop();
         stopWhatsAppKillLoop();
         stopGoogleAssistantKillLoop();
+        stopParentalControlsKillLoop();
         destroyGhostShield();
         instance = null;
         return super.onUnbind(intent);
@@ -109,6 +121,7 @@ public class BlockerService extends AccessibilityService {
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
+        int eventType = event.getEventType();
 
         // 0.00s Instant Google Assistant & Google App Blocker
         if (prefManager.isGoogleAssistantBlocked()) {
@@ -123,24 +136,33 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
+        // 0.00s Instant Parental Controls Blocker
+        if (prefManager.isParentalControlsBlocked()) {
+            if (isFamilyLinkPackage(pkgName)) {
+                handleParentalControls(event, eventType, pkgName);
+            }
+        }
+
         // Remove overlay if we leave blocked packages
         boolean isDocsBrowserSession = prefManager.isGoogleDocsBlocked() && 
                                        isBrowserKillLoopActive && 
                                        isMonitoredSearchPackage(pkgName);
+        boolean isFamilyLinkSession = prefManager.isParentalControlsBlocked() && 
+                                      isFamilyLinkPackage(pkgName);
 
         if (!isGoogleDocsPackage(pkgName) && 
             !PKG_WHATSAPP.equals(pkgName) && 
             !PKG_GOOGLE_ASSISTANT.equals(pkgName) && 
             !PKG_GOOGLE_APP.equals(pkgName) &&
+            !isFamilyLinkSession &&
             !isDocsBrowserSession) {
             
             dismissOverlayWithAnimation();
             stopBrowserKillLoop();
             stopWhatsAppKillLoop();
             stopGoogleAssistantKillLoop();
+            stopParentalControlsKillLoop();
         }
-
-        int eventType = event.getEventType();
 
         // GLOBAL PROTECTION SCAN (Non-FocusGuard apps only - gated to Settings/Installer for maximum performance)
         if (!pkgName.equals(OUR_PACKAGE)) {
@@ -1753,6 +1775,239 @@ public class BlockerService extends AccessibilityService {
         } else {
             mainHandler.post(r);
         }
+    }
+
+    // =========================================================================
+    // GOOGLE PARENTAL CONTROLS BLOCKING (Stop Supervision)
+    // =========================================================================
+
+    private boolean isParentalControlsKillLoopActive = false;
+    private long parentalControlsKillLoopStartTime = 0;
+    private boolean hasBlockedCurrentParentalControls = false;
+
+    private final Runnable parentalControlsKillRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isParentalControlsKillLoopActive) return;
+
+            boolean isParentalActive = false;
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    CharSequence pkg = root.getPackageName();
+                    if (pkg != null) {
+                        String pkgStr = pkg.toString().toLowerCase();
+                        if (isFamilyLinkPackage(pkgStr)) {
+                            if (shouldBlockParentalControls(root)) {
+                                isParentalActive = true;
+                                doParentalControlsBlock();
+                            }
+                        }
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+
+            long elapsed = System.currentTimeMillis() - parentalControlsKillLoopStartTime;
+
+            // If Parental Controls is NOT active anymore, and we have already successfully blocked it:
+            if (!isParentalActive && (hasBlockedCurrentParentalControls || elapsed > 300)) {
+                dismissOverlayWithAnimation();
+                isParentalControlsKillLoopActive = false;
+                return;
+            }
+
+            // Self-schedule the next iteration dynamically (10ms polling during critical phase, then 100ms)
+            if (isParentalControlsKillLoopActive) {
+                if (elapsed < 1500) {
+                    long delay = (elapsed < 600) ? 10L : 100L;
+                    mainHandler.postDelayed(this, delay);
+                } else {
+                    dismissOverlayWithAnimation();
+                    isParentalControlsKillLoopActive = false;
+                }
+            }
+        }
+    };
+
+    private void startParentalControlsKillLoop() {
+        isParentalControlsKillLoopActive = true;
+        parentalControlsKillLoopStartTime = System.currentTimeMillis();
+        hasBlockedCurrentParentalControls = false;
+
+        mainHandler.removeCallbacks(parentalControlsKillRunnable);
+        parentalControlsKillRunnable.run();
+
+        // Safety timeout to automatically dismiss the overlay after 1.5 seconds
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (isParentalControlsKillLoopActive) {
+                    isParentalControlsKillLoopActive = false;
+                    dismissOverlayWithAnimation();
+                }
+            }
+        }, 1500);
+    }
+
+    private void stopParentalControlsKillLoop() {
+        isParentalControlsKillLoopActive = false;
+        mainHandler.removeCallbacks(parentalControlsKillRunnable);
+        dismissOverlayWithAnimation();
+    }
+
+    private void doParentalControlsBlock() {
+        hasBlockedCurrentParentalControls = true;
+        showInstantZeroFlashOverlay();
+        performGlobalAction(GLOBAL_ACTION_HOME);
+    }
+
+    private void handleParentalControls(AccessibilityEvent event, int eventType, String pkgName) {
+        // Reset block state when the user is back in safe state
+        if (hasBlockedCurrentParentalControls) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+                eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    try {
+                        if (!shouldBlockParentalControls(root)) {
+                            hasBlockedCurrentParentalControls = false;
+                        }
+                    } finally {
+                        root.recycle();
+                    }
+                }
+            }
+        }
+
+        // ===== FAST PATH #1: Click Interception (3-dot menu or Stop Supervision click) =====
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                try {
+                    // Check if it's the 3-dot menu or a Stop supervision button/option click
+                    boolean isMenuClick = isMoreOptionsButton(source);
+                    String nodeText = getNodeTextOrDesc(source).toLowerCase();
+                    boolean isStopSupervisionClick = nodeText.contains("stop supervision") || 
+                                                     nodeText.contains("তত্ত্বাবধান বন্ধ করুন") ||
+                                                     nodeText.contains("তত্ত্বাবধান বন্ধ করবেন");
+
+                    if (isMenuClick || isStopSupervisionClick) {
+                        AccessibilityNodeInfo root = getRootInActiveWindow();
+                        if (root != null) {
+                            try {
+                                if (isParentalControlsActive(root, pkgName)) {
+                                    doParentalControlsBlock();
+                                    if (!isParentalControlsKillLoopActive) {
+                                        startParentalControlsKillLoop();
+                                    }
+                                    return;
+                                }
+                            } finally {
+                                root.recycle();
+                            }
+                        }
+                    }
+                } finally {
+                    source.recycle();
+                }
+            }
+        }
+
+        // ===== FAST PATH #2: Fallback Watchdog on window/content changes =====
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    if (isParentalControlsActive(root, pkgName) && shouldBlockParentalControls(root)) {
+                        doParentalControlsBlock();
+                        if (!isParentalControlsKillLoopActive) {
+                            startParentalControlsKillLoop();
+                        }
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+        }
+    }
+
+    private boolean isParentalControlsActive(AccessibilityNodeInfo root, String pkgName) {
+        if (root == null) return false;
+        if (PKG_FAMILY_LINK.equals(pkgName) || PKG_FAMILY_LINK_HELPER.equals(pkgName)) {
+            return true;
+        }
+        return isParentalControlsScreen(root);
+    }
+
+    private boolean isParentalControlsScreen(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        
+        String[] indicators = {
+            "parental controls", "parental control", "প্যারেন্টাল কন্ট্রোল",
+            "screen time", "screen-time", "daily limit", "downtime", "school time", 
+            "blocked apps", "about supervision", "stop supervision", "তত্ত্বাবধান"
+        };
+        
+        for (String ind : indicators) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(ind);
+            if (nodes != null && !nodes.isEmpty()) {
+                for (AccessibilityNodeInfo n : nodes) {
+                    if (n != null) n.recycle();
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean shouldBlockParentalControls(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        
+        String[] stopSupervisionIndicators = {
+            "stop supervision?",
+            "তত্ত্বাবধান বন্ধ করবেন?",
+            "i understand that my parent will be notified",
+            "আমি বুঝি যে আমার অভিভাবককে জানানো হবে",
+            "my parent will be notified",
+            "অভিভাবককে জানানো হবে",
+            "stop supervision",
+            "তত্ত্বাবধান বন্ধ করুন"
+        };
+        
+        for (String term : stopSupervisionIndicators) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
+            if (nodes != null && !nodes.isEmpty()) {
+                for (AccessibilityNodeInfo n : nodes) {
+                    if (n != null) n.recycle();
+                }
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    private boolean isMoreOptionsButton(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        CharSequence desc = node.getContentDescription();
+        if (desc != null) {
+            String s = desc.toString().toLowerCase().trim();
+            if (s.contains("more options") || s.contains("option") || s.contains("বিকল্প") || s.contains("অপশন")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String getNodeTextOrDesc(AccessibilityNodeInfo node) {
+        if (node == null) return "";
+        CharSequence t = node.getText();
+        CharSequence d = node.getContentDescription();
+        return (t != null ? t.toString() : "") + " " + (d != null ? d.toString() : "");
     }
 
     // =========================================================================
