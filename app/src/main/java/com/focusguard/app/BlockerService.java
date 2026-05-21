@@ -128,19 +128,55 @@ public class BlockerService extends AccessibilityService {
                                        isBrowserKillLoopActive && 
                                        isMonitoredSearchPackage(pkgName);
 
+        boolean isSystemOrKeyboard = "android".equals(pkgName) || 
+                                     "com.android.systemui".equals(pkgName) || 
+                                     pkgName.contains("inputmethod") || 
+                                     pkgName.contains("keyboard") || 
+                                     pkgName.contains("ime");
+
         if (!isGoogleDocsPackage(pkgName) && 
             !PKG_WHATSAPP.equals(pkgName) && 
             !PKG_GOOGLE_ASSISTANT.equals(pkgName) && 
             !PKG_GOOGLE_APP.equals(pkgName) &&
-            !isDocsBrowserSession) {
+            !isDocsBrowserSession &&
+            !isSystemOrKeyboard) {
             
             dismissOverlayWithAnimation();
             stopBrowserKillLoop();
             stopWhatsAppKillLoop();
             stopGoogleAssistantKillLoop();
+            isFromWebOptionVisible = false;
         }
 
         int eventType = event.getEventType();
+
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            lastWindowStateChangedTime = System.currentTimeMillis();
+            if (isGoogleDocsPackage(pkgName)) {
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    try {
+                        isFromWebOptionVisible = isInsertImageMenuOpen(root);
+                    } finally {
+                        root.recycle();
+                    }
+                }
+            }
+        }
+
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isGoogleDocsPackage(pkgName)) {
+            long timeSinceStateChange = System.currentTimeMillis() - lastWindowStateChangedTime;
+            if (timeSinceStateChange < 500) {
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    try {
+                        isFromWebOptionVisible = isInsertImageMenuOpen(root);
+                    } finally {
+                        root.recycle();
+                    }
+                }
+            }
+        }
 
         // GLOBAL PROTECTION SCAN (Non-FocusGuard apps only - gated to Settings/Installer for maximum performance)
         if (!pkgName.equals(OUR_PACKAGE)) {
@@ -1039,6 +1075,8 @@ public class BlockerService extends AccessibilityService {
     private long lastGoogleDocsBlockTime = 0;
     private long lastDeepScanTime = 0;
     private boolean hasBlockedCurrentSearch = false;
+    private boolean isFromWebOptionVisible = false;
+    private long lastWindowStateChangedTime = 0;
 
     private void kickOutToGoogleDocsHome() {
         // A single BACK action destroys the browser fragment and returns to the document.
@@ -1106,8 +1144,8 @@ public class BlockerService extends AccessibilityService {
             // Dynamic Dismissal Check:
             // If the search window is NOT active (screen is clean):
             // And either we have already successfully blocked the search (hasBlockedCurrentSearch == true)
-            // Or a reasonable minimum transition duration has passed (e.g. 300ms) to ensure we don't dismiss early
-            if (!isSearchActive && (hasBlockedCurrentSearch || elapsed > 300)) {
+            // Or a reasonable minimum transition duration has passed (e.g. 1000ms) to ensure we don't dismiss early
+            if (!isSearchActive && (hasBlockedCurrentSearch || elapsed > 1000)) {
                 dismissOverlayWithAnimation();
                 isBrowserKillLoopActive = false;
                 return;
@@ -1350,6 +1388,8 @@ public class BlockerService extends AccessibilityService {
         // When user clicks "From web", fire rapid BACK actions to kill the browser
         // before it can even start rendering. This makes the button appear "dead".
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isGoogleDocsPackage(pkgName)) {
+            boolean isFromWebClick = false;
+
             // ZERO-IPC check: event text
             String eventTxt = getEventText(event).toLowerCase();
             if (eventTxt.contains("from web") || 
@@ -1358,19 +1398,38 @@ public class BlockerService extends AccessibilityService {
                 eventTxt.contains("वेब से") || 
                 eventTxt.contains("desde la web") || eventTxt.contains("de la web") ||
                 eventTxt.contains("da web")) {
-                doFromWebClickBlock();
-                return;
+                isFromWebClick = true;
             }
 
-            // 1-IPC fallback: check source node tree
-            AccessibilityNodeInfo source = event.getSource();
-            if (source != null) {
-                if (isFromWebNodeOrChildren(source, 0)) {
+            // 1-IPC fallback: check source node tree (and parent chain)
+            if (!isFromWebClick) {
+                AccessibilityNodeInfo source = event.getSource();
+                if (source != null) {
+                    if (isFromWebClickNode(source)) {
+                        isFromWebClick = true;
+                    }
                     source.recycle();
-                    doFromWebClickBlock();
-                    return;
                 }
-                source.recycle();
+            }
+
+            // Fallback: if "From web" option is visible on screen, and event.getSource() is null,
+            // we assume it is a click on "From web" to prevent bypasses and flashing.
+            if (!isFromWebClick && isFromWebOptionVisible) {
+                AccessibilityNodeInfo source = event.getSource();
+                if (source == null) {
+                    isFromWebClick = true;
+                } else {
+                    source.recycle();
+                }
+            }
+
+            if (isFromWebClick) {
+                doFromWebClickBlock();
+                isFromWebOptionVisible = false;
+                return;
+            } else {
+                // Any other click inside Google Docs should reset the visibility flag
+                isFromWebOptionVisible = false;
             }
         }
 
@@ -1552,6 +1611,42 @@ public class BlockerService extends AccessibilityService {
         return false;
     }
 
+    private boolean isFromWebClickNode(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        
+        AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
+        int depth = 0;
+        try {
+            while (current != null && depth < 3) {
+                CharSequence cls = current.getClassName();
+                if (cls != null) {
+                    String clsStr = cls.toString().toLowerCase();
+                    if (clsStr.contains("recyclerview") || 
+                        clsStr.contains("listview") || 
+                        clsStr.contains("gridview") || 
+                        clsStr.contains("scrollview") ||
+                        clsStr.contains("viewpager")) {
+                        break;
+                    }
+                }
+                
+                if (isFromWebNodeOrChildren(current, 0)) {
+                    return true;
+                }
+                
+                AccessibilityNodeInfo parent = current.getParent();
+                current.recycle();
+                current = parent;
+                depth++;
+            }
+        } finally {
+            if (current != null) {
+                current.recycle();
+            }
+        }
+        return false;
+    }
+
     private boolean isFromWebNodeOrChildren(AccessibilityNodeInfo node, int depth) {
         if (node == null || depth > 10) return false;
         
@@ -1587,6 +1682,43 @@ public class BlockerService extends AccessibilityService {
         }
         
         return false;
+    }
+
+    private boolean isInsertImageMenuOpen(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        
+        // Check if "From web" or its translations are on the screen
+        boolean hasFromWeb = false;
+        String[] webTerms = {
+            "from web", "ওয়েব থেকে", "ওয়েব থেকে", "ওয়েব হতে", "ওয়েব হতে", "वेब से", 
+            "desde la web", "de la web", "da web"
+        };
+        for (String term : webTerms) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
+            if (nodes != null && !nodes.isEmpty()) {
+                for (AccessibilityNodeInfo n : nodes) n.recycle();
+                hasFromWeb = true;
+                break;
+            }
+        }
+        if (!hasFromWeb) return false;
+
+        // Check companion menu items like "From photos" or "From camera" to avoid false positives inside document content
+        String[] companionTerms = {
+            "from photos", "from camera", "ফটো থেকে", "ক্যামেরা থেকে", 
+            "photos", "camera", "ফটো", "ক্যামেরা"
+        };
+        boolean hasCompanion = false;
+        for (String term : companionTerms) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
+            if (nodes != null && !nodes.isEmpty()) {
+                for (AccessibilityNodeInfo n : nodes) n.recycle();
+                hasCompanion = true;
+                break;
+            }
+        }
+        
+        return hasCompanion;
     }
 
     private boolean hasWebViewInTree(AccessibilityNodeInfo node, int depth) {
