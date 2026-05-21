@@ -1620,7 +1620,7 @@ public class BlockerService extends AccessibilityService {
     private boolean isGhostShieldActive = false;
 
     private void initGhostShield() {
-        mainHandler.post(new Runnable() {
+        Runnable r = new Runnable() {
             @Override
             public void run() {
                 try {
@@ -1645,7 +1645,13 @@ public class BlockerService extends AccessibilityService {
                     wm.addView(ghostShieldView, ghostShieldParams);
                 } catch (Exception ignored) {}
             }
-        });
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
     }
 
     private void destroyGhostShield() {
@@ -1666,7 +1672,7 @@ public class BlockerService extends AccessibilityService {
             initGhostShield();
         }
         isGhostShieldActive = true;
-        mainHandler.post(new Runnable() {
+        Runnable r = new Runnable() {
             @Override
             public void run() {
                 try {
@@ -1685,13 +1691,19 @@ public class BlockerService extends AccessibilityService {
                     }
                 } catch (Exception ignored) {}
             }
-        });
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
     }
 
     private synchronized void dismissOverlayWithAnimation() {
         if (ghostShieldView == null || !isGhostShieldActive) return;
         isGhostShieldActive = false;
-        mainHandler.post(new Runnable() {
+        Runnable r = new Runnable() {
             @Override
             public void run() {
                 try {
@@ -1734,7 +1746,13 @@ public class BlockerService extends AccessibilityService {
                     } catch (Exception ignored) {}
                 }
             }
-        });
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
     }
 
     // =========================================================================
