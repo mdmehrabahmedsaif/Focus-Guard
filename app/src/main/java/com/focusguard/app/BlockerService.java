@@ -1206,9 +1206,9 @@ public class BlockerService extends AccessibilityService {
         // Pure event-driven flow: no touch shield updates to eliminate typing lag entirely!
 
         // Ignore text selection popup toolbar events to allow copy/paste/select-all
-        CharSequence evClass = event.getClassName();
-        if (evClass != null) {
-            String clsStr = evClass.toString();
+        CharSequence toolbarEvClass = event.getClassName();
+        if (toolbarEvClass != null) {
+            String clsStr = toolbarEvClass.toString();
             if (clsStr.contains("ActionMode") || clsStr.contains("FloatingToolbar")) {
                 return;
             }
