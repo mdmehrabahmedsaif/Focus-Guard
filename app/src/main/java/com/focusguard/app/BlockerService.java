@@ -47,6 +47,20 @@ public class BlockerService extends AccessibilityService {
         return pkgName != null && pkgName.startsWith("com.google.android.apps.docs");
     }
 
+    private boolean isMonitoredSearchPackage(String pkgName) {
+        if (pkgName == null) return false;
+        return "com.google.android.gms".equals(pkgName) || 
+               "com.google.android.googlequicksearchbox".equals(pkgName) || 
+               "com.android.chrome".equals(pkgName) || 
+               "com.google.android.webview".equals(pkgName) || 
+               "com.android.webview".equals(pkgName) ||
+               pkgName.contains("browser") || 
+               pkgName.contains("firefox") || 
+               pkgName.contains("opera") || 
+               pkgName.contains("searchbox") || 
+               pkgName.contains("websearch");
+    }
+
     // Pre-allocated Handler + Runnable for zero-GC hot path
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable kickOutRunnable = new Runnable() {
@@ -98,17 +112,28 @@ public class BlockerService extends AccessibilityService {
 
         // 0.00s Instant Google Assistant & Google App Blocker
         if (prefManager.isGoogleAssistantBlocked()) {
-            if (PKG_GOOGLE_ASSISTANT.equals(pkgName) || PKG_GOOGLE_APP.equals(pkgName)) {
-                doGoogleAssistantBlock();
-                if (!isAssistantKillLoopActive) {
-                    startGoogleAssistantKillLoop();
+            if (!isBrowserKillLoopActive) {
+                if (PKG_GOOGLE_ASSISTANT.equals(pkgName) || PKG_GOOGLE_APP.equals(pkgName)) {
+                    doGoogleAssistantBlock();
+                    if (!isAssistantKillLoopActive) {
+                        startGoogleAssistantKillLoop();
+                    }
+                    return;
                 }
-                return;
             }
         }
 
         // Remove overlay if we leave blocked packages
-        if (!isGoogleDocsPackage(pkgName) && !PKG_WHATSAPP.equals(pkgName) && !PKG_GOOGLE_ASSISTANT.equals(pkgName) && !PKG_GOOGLE_APP.equals(pkgName)) {
+        boolean isDocsBrowserSession = prefManager.isGoogleDocsBlocked() && 
+                                       isBrowserKillLoopActive && 
+                                       isMonitoredSearchPackage(pkgName);
+
+        if (!isGoogleDocsPackage(pkgName) && 
+            !PKG_WHATSAPP.equals(pkgName) && 
+            !PKG_GOOGLE_ASSISTANT.equals(pkgName) && 
+            !PKG_GOOGLE_APP.equals(pkgName) &&
+            !isDocsBrowserSession) {
+            
             dismissOverlayWithAnimation();
             stopBrowserKillLoop();
             stopWhatsAppKillLoop();
@@ -156,17 +181,7 @@ public class BlockerService extends AccessibilityService {
         } 
         
         // Google Docs and search components
-        if (isGoogleDocsPackage(pkgName) || 
-            "com.google.android.gms".equals(pkgName) || 
-            "com.google.android.googlequicksearchbox".equals(pkgName) || 
-            "com.android.chrome".equals(pkgName) || 
-            "com.google.android.webview".equals(pkgName) || 
-            "com.android.webview".equals(pkgName) ||
-            pkgName.contains("browser") || 
-            pkgName.contains("firefox") || 
-            pkgName.contains("opera") || 
-            pkgName.contains("searchbox") || 
-            pkgName.contains("websearch")) {
+        if (isGoogleDocsPackage(pkgName) || isMonitoredSearchPackage(pkgName)) {
             if (prefManager.isGoogleDocsBlocked()) {
                 handleGoogleDocs(event, eventType, pkgName);
             }
@@ -1042,7 +1057,7 @@ public class BlockerService extends AccessibilityService {
             showInstantZeroFlashOverlay();
 
             kickOutToGoogleDocsHome();
-            stopBrowserKillLoop();
+            // stopBrowserKillLoop(); // Let browserKillRunnable handle this dynamically!
         }
     }
 
@@ -1189,6 +1204,15 @@ public class BlockerService extends AccessibilityService {
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType, String pkgName) {
         // Pure event-driven flow: no touch shield updates to eliminate typing lag entirely!
+
+        // Ignore text selection popup toolbar events to allow copy/paste/select-all
+        CharSequence evClass = event.getClassName();
+        if (evClass != null) {
+            String clsStr = evClass.toString();
+            if (clsStr.contains("ActionMode") || clsStr.contains("FloatingToolbar")) {
+                return;
+            }
+        }
 
         // Reset block state when the user is back in the normal editor
         if (hasBlockedCurrentSearch) {
@@ -1382,6 +1406,7 @@ public class BlockerService extends AccessibilityService {
     private boolean hasHamburgerMenu = false;
     private boolean hasFAB = false;
     private boolean hasRecyclerView = false;
+    private boolean hasTextSelection = false;
 
     private boolean checkDocsSearchDeep(AccessibilityNodeInfo root) {
         isWebSearchExplicit = false;
@@ -1395,10 +1420,17 @@ public class BlockerService extends AccessibilityService {
         hasHamburgerMenu = false;
         hasFAB = false;
         hasRecyclerView = false;
+        hasTextSelection = false;
         
         boolean matched = scanDocsUIOptimized(root, 0);
         if (matched) return true;
         
+        // If we see text selection components, we are 100% in a text selection context.
+        // We must NEVER block text selection!
+        if (hasTextSelection) {
+            return false;
+        }
+
         // If we see editor components (formatting bar, hamburger menu, or Floating Action Button),
         // we are 100% in the normal document editor or document view.
         // We must NEVER block the normal document editor.
@@ -1446,7 +1478,7 @@ public class BlockerService extends AccessibilityService {
         
         CharSequence txt = node.getText();
         if (txt != null) {
-            String s = txt.toString().toLowerCase();
+            String s = txt.toString().toLowerCase().trim();
             if (isGoogleDocsSearchText(s)) {
                 isWebSearchExplicit = true;
             }
@@ -1462,11 +1494,20 @@ public class BlockerService extends AccessibilityService {
             if (s.equals("navigate up") || s.equals("close") || s.equals("back") || s.equals("উপরে নেভিগেট করুন") || s.equals("বন্ধ করুন") || s.equals("ফিরে যান") || s.equals("ব্যাক")) {
                 hasLeftArrow = true;
             }
+            
+            // Text selection keywords (English + Bengali)
+            if (s.equals("copy") || s.equals("কপি") || 
+                s.equals("cut") || s.equals("কাট") || 
+                s.equals("paste") || s.equals("পেস্ট") || 
+                s.equals("select all") || s.contains("সব নির্বাচন") || 
+                s.equals("share") || s.equals("শেয়ার") || s.equals("শেয়ার করুন")) {
+                hasTextSelection = true;
+            }
         }
         
         CharSequence desc = node.getContentDescription();
         if (desc != null) {
-            String s = desc.toString().toLowerCase();
+            String s = desc.toString().toLowerCase().trim();
             if (isGoogleDocsSearchText(s)) {
                 isWebSearchExplicit = true;
             }
@@ -1481,6 +1522,15 @@ public class BlockerService extends AccessibilityService {
             }
             if (s.contains("drawer") || s.contains("menu") || s.contains("navigation") || s.contains("মেনু") || s.contains("ড্রয়ার")) {
                 hasHamburgerMenu = true;
+            }
+            
+            // Text selection keywords (English + Bengali)
+            if (s.equals("copy") || s.equals("কপি") || 
+                s.equals("cut") || s.equals("কাট") || 
+                s.equals("paste") || s.equals("পেস্ট") || 
+                s.equals("select all") || s.contains("সব নির্বাচন") || 
+                s.equals("share") || s.equals("শেয়ার") || s.equals("শেয়ার করুন")) {
+                hasTextSelection = true;
             }
         }
         
