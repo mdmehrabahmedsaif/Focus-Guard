@@ -894,8 +894,12 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
+        CharSequence pkg = event.getPackageName();
+        String pkgStr = pkg != null ? pkg.toString().toLowerCase() : "";
+        boolean isSettings = pkgStr.contains("settings");
+
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
-            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isSettings)) {
             
             // Speed up window state dialog auto-dismissal using local event texts
             String eventTxt = getEventText(event).toLowerCase();
@@ -943,7 +947,9 @@ public class BlockerService extends AccessibilityService {
             }
 
             // Layer 3: Multi-window scanner fallback (using getWindows())
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            // Only execute this heavier check on actual window state changes (not content changed)
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                 try {
                     List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
                     if (windows != null && !windows.isEmpty()) {
