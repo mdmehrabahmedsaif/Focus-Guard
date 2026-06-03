@@ -51,6 +51,7 @@ jobs:
           **Build Date:** ${{ steps.version.outputs.DATE }}
 
           ### What's included in this release:
+          - 🛡️ **Blocker Hero Settings Blocker:** Instantly blocks access to the Settings option inside the Blocker Hero app (`com.blockerhero`) and redirects the user to the system Home screen. Features a dedicated ON/OFF toggle switch in FocusGuard settings.
           - 🎙️ **Google Assistant Blocker:** Prevents opening Google Assistant as a standalone app or as a system overlay.
           - 📝 **Google Docs Blocker (v1.7.0):** Instantly kicks you out to the Google Docs Home screen (file list) upon tapping "From Web".
           - ⚡ **Zero-Lag Typing:** Rewrote the background accessibility service checking logic to eliminate recursive node traversals during typing, providing 100% smooth typing and editing.
