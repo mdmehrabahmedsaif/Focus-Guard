@@ -608,26 +608,102 @@ public class BlockerService extends AccessibilityService {
         return false;
     }
 
+    private boolean isSearchResultBreadcrumb(String text) {
+        if (text == null) return false;
+        String lower = text.toLowerCase();
+        return lower.contains("connection") || 
+               lower.contains("setting") || 
+               lower.contains("সংযোগ") || 
+               lower.contains("কানেকশন") || 
+               lower.contains("সেটিংস") || 
+               lower.contains("সেটিং");
+    }
+
+    private boolean hasSearchResultBreadcrumbs(AccessibilityNodeInfo node, int depth) {
+        if (node == null) return false;
+        
+        CharSequence selfTxt = node.getText();
+        if (selfTxt != null && isSearchResultBreadcrumb(selfTxt.toString())) return true;
+        
+        CharSequence selfDesc = node.getContentDescription();
+        if (selfDesc != null && isSearchResultBreadcrumb(selfDesc.toString())) return true;
+
+        if (depth >= 3) return false;
+        
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                if (hasSearchResultBreadcrumbs(child, depth + 1)) {
+                    child.recycle();
+                    return true;
+                }
+                child.recycle();
+            }
+        }
+        return false;
+    }
+
+    private boolean isPrivateDNSSearchResult(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        
+        AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
+        AccessibilityNodeInfo clickableAncestor = null;
+        int depth = 0;
+        
+        while (current != null && depth < 5) {
+            if (current.isClickable()) {
+                clickableAncestor = AccessibilityNodeInfo.obtain(current);
+                break;
+            }
+            AccessibilityNodeInfo parent = current.getParent();
+            current.recycle();
+            current = parent;
+            depth++;
+        }
+        
+        if (current != null) {
+            current.recycle();
+        }
+        
+        if (clickableAncestor != null) {
+            boolean isSearch = hasSearchResultBreadcrumbs(clickableAncestor, 0);
+            clickableAncestor.recycle();
+            return isSearch;
+        }
+        
+        return false;
+    }
+
     private void handlePrivateDNSProtection(AccessibilityEvent event, int eventType) {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            String text = getEventText(event).toLowerCase();
-            if (isPrivateDNSText(text)) {
-                showInstantZeroFlashOverlay();
-                performGlobalAction(GLOBAL_ACTION_BACK);
-                mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
-                return;
-            }
-
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
-                if (isPrivateDNSNode(source)) {
+                try {
+                    if (isPrivateDNSNode(source)) {
+                        // Check if this is a search result - if so, do NOT block
+                        if (isPrivateDNSSearchResult(source)) {
+                            return;
+                        }
+                        showInstantZeroFlashOverlay();
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
+                        return;
+                    }
+                } finally {
                     source.recycle();
+                }
+            } else {
+                String text = getEventText(event).toLowerCase();
+                if (isPrivateDNSText(text)) {
+                    // Check if the event text indicates a search result breadcrumb
+                    if (isSearchResultBreadcrumb(text)) {
+                        return;
+                    }
                     showInstantZeroFlashOverlay();
                     performGlobalAction(GLOBAL_ACTION_BACK);
                     mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
                     return;
                 }
-                source.recycle();
             }
         }
 
