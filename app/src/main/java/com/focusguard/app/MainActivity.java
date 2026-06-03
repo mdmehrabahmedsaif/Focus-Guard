@@ -69,7 +69,7 @@ public class MainActivity extends AppCompatActivity {
         setupAppRow(R.id.rowGoogleAssistant, "🎙️", "Google Assistant & App", "Block Google search & voice assistant");
         setupAppRow(R.id.rowGoogleDocs,"📝", "Google Docs",      "Block web image search");
         setupAppRow(R.id.rowPrivateDNS,"🌐", "Private DNS Settings", "Block access to Private DNS settings");
-        setupAppRow(R.id.rowBlockerHero,"🛡️", "Blocker Hero Settings", "Block settings screen of Blocker Hero");
+        setupAppRow(R.id.rowBlockerHero,"🛡️", "Block Blocker Hero", "Block entire Blocker Hero app");
 
         swWhatsApp  = findViewById(R.id.rowWhatsApp).findViewById(R.id.itemSwitch);
         swYouTube   = findViewById(R.id.rowYouTube).findViewById(R.id.itemSwitch);

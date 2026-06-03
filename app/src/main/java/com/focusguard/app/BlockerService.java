@@ -92,6 +92,7 @@ public class BlockerService extends AccessibilityService {
         stopBrowserKillLoop();
         stopWhatsAppKillLoop();
         stopGoogleAssistantKillLoop();
+        stopBlockerHeroKillLoop();
         destroyGhostShield();
         hideDnsTouchBlocker();
         instance = null;
@@ -144,6 +145,7 @@ public class BlockerService extends AccessibilityService {
             !PKG_WHATSAPP.equals(pkgName) && 
             !PKG_GOOGLE_ASSISTANT.equals(pkgName) && 
             !PKG_GOOGLE_APP.equals(pkgName) &&
+            !PKG_BLOCKER_HERO.equals(pkgName) &&
             !isDocsBrowserSession &&
             !isSystemOrKeyboard) {
             
@@ -151,6 +153,7 @@ public class BlockerService extends AccessibilityService {
             stopBrowserKillLoop();
             stopWhatsAppKillLoop();
             stopGoogleAssistantKillLoop();
+            stopBlockerHeroKillLoop();
             isFromWebOptionVisible = false;
         }
 
@@ -226,7 +229,11 @@ public class BlockerService extends AccessibilityService {
             }
         } else if (PKG_BLOCKER_HERO.equals(pkgName)) {
             if (prefManager.isBlockerHeroBlocked()) {
-                handleBlockerHero(event, eventType);
+                doBlockerHeroCompleteBlock();
+                if (!isBlockerHeroKillLoopActive) {
+                    startBlockerHeroKillLoop();
+                }
+                return;
             }
         } 
         
@@ -2270,265 +2277,87 @@ public class BlockerService extends AccessibilityService {
     }
 
     // =========================================================================
-    // BLOCKER HERO BLOCKING
+    // BLOCKER HERO COMPLETE APP BLOCKING (sub-0.001s Instant Kickout)
     // =========================================================================
 
-    private void handleBlockerHero(AccessibilityEvent event, int eventType) {
-        // 1. Instant Active Screen Detection on any Event
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root != null) {
-            try {
-                if (isSettingsTabSelectedPrecise(root) || isBlockerHeroSettingsScreen(root)) {
-                    doBlockerHeroBlock(root);
-                    return;
-                }
-            } finally {
-                root.recycle();
-            }
-        }
+    private boolean isBlockerHeroKillLoopActive = false;
+    private long blockerHeroKillLoopStartTime = 0;
+    private boolean hasBlockedCurrentBlockerHero = false;
 
-        // 2. Click Interception on "Settings" tab (Zero-flash, instant redirection)
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            String text = getEventText(event).toLowerCase();
-            if (isSettingsTabClick(text)) {
-                doBlockerHeroBlock(null);
-                return;
-            }
-            
-            AccessibilityNodeInfo source = event.getSource();
-            if (source != null) {
+    private final Runnable blockerHeroKillRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isBlockerHeroKillLoopActive) return;
+
+            boolean isBlockerHeroActive = false;
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
                 try {
-                    if (hasSettingsTabText(source)) {
-                        doBlockerHeroBlock(null);
-                        return;
-                    }
-                } finally {
-                    source.recycle();
-                }
-            }
-        }
-        
-        // 3. Window State Check (Zero-IPC activity/class check)
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            CharSequence className = event.getClassName();
-            if (className != null) {
-                String clsName = className.toString().toLowerCase();
-                if (clsName.contains("setting")) {
-                    doBlockerHeroBlock(null);
-                    return;
-                }
-            }
-        }
-    }
-
-    private void doBlockerHeroBlock(AccessibilityNodeInfo root) {
-        boolean redirected = false;
-        if (root != null) {
-            redirected = switchToBlockerHeroBlockingTab(root);
-        }
-        if (!redirected) {
-            AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
-            if (activeRoot != null) {
-                try {
-                    redirected = switchToBlockerHeroBlockingTab(activeRoot);
-                } finally {
-                    activeRoot.recycle();
-                }
-            }
-        }
-        if (!redirected) {
-            // Failsafe: if we cannot redirect inside the app, kick out to home screen
-            triggerKickOut();
-        }
-    }
-
-    private boolean switchToBlockerHeroBlockingTab(AccessibilityNodeInfo root) {
-        if (root == null) return false;
-        
-        // Find by text "Blocking" (English) or "ব্লকিং" (Bengali)
-        String[] tabs = {"Blocking", "ব্লকিং"};
-        for (String tab : tabs) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(tab);
-            if (nodes != null) {
-                for (AccessibilityNodeInfo node : nodes) {
-                    if (node == null) continue;
-                    
-                    if (isEditableNode(node)) {
-                        node.recycle();
-                        continue;
-                    }
-                    
-                    if (clickNodeOrParent(node)) {
-                        node.recycle();
-                        return true;
-                    }
-                    node.recycle();
-                }
-            }
-        }
-        
-        // Recursive search fallback
-        AccessibilityNodeInfo blockingTab = findBlockingTabNode(root);
-        if (blockingTab != null) {
-            boolean clicked = clickNodeOrParent(blockingTab);
-            blockingTab.recycle();
-            return clicked;
-        }
-        
-        return false;
-    }
-
-    private AccessibilityNodeInfo findBlockingTabNode(AccessibilityNodeInfo node) {
-        if (node == null) return null;
-        if (isEditableNode(node)) return null;
-        
-        CharSequence t = node.getText();
-        CharSequence d = node.getContentDescription();
-        String text = t != null ? t.toString().trim().toLowerCase() : "";
-        String desc = d != null ? d.toString().trim().toLowerCase() : "";
-        
-        if (text.equals("blocking") || text.equals("ব্লকিং") ||
-            desc.equals("blocking") || desc.equals("ব্লকিং")) {
-            return AccessibilityNodeInfo.obtain(node);
-        }
-        
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child == null) continue;
-            AccessibilityNodeInfo found = findBlockingTabNode(child);
-            child.recycle();
-            if (found != null) return found;
-        }
-        return null;
-    }
-
-    private boolean isBlockerHeroSettingsScreen(AccessibilityNodeInfo root) {
-        if (root == null) return false;
-        
-        int matchCount = 0;
-        
-        String[] options = {
-            "account", "অ্যাকাউন্ট",
-            "uninstall", "আনইনস্টল",
-            "log out", "লগ আউট", "logout",
-            "privacy", "প্রাইভেসি",
-            "premium", "প্রিমিয়াম",
-            "theme", "থিম",
-            "language", "ভাষা"
-        };
-        
-        for (String opt : options) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(opt);
-            if (nodes != null) {
-                if (!nodes.isEmpty()) {
-                    for (AccessibilityNodeInfo node : nodes) {
-                        if (node != null && !isEditableNode(node)) {
-                            matchCount++;
-                            node.recycle();
-                            break;
-                        } else if (node != null) {
-                            node.recycle();
+                    CharSequence pkg = root.getPackageName();
+                    if (pkg != null) {
+                        String pkgStr = pkg.toString();
+                        if (PKG_BLOCKER_HERO.equals(pkgStr)) {
+                            isBlockerHeroActive = true;
+                            doBlockerHeroCompleteBlock();
                         }
                     }
+                } finally {
+                    root.recycle();
                 }
             }
-            if (matchCount >= 2) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
 
-    private boolean isSettingsTabSelectedPrecise(AccessibilityNodeInfo root) {
-        if (root == null) return false;
-        
-        String[] terms = {"settings", "সেটিংস", "সেটিং", "setting"};
-        for (String term : terms) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
-            if (nodes != null) {
-                for (AccessibilityNodeInfo node : nodes) {
-                    if (node == null) continue;
-                    
-                    if (isEditableNode(node)) {
-                        node.recycle();
-                        continue;
-                    }
-                    
-                    if (checkSelectedStateUpToDepth(node, 0)) {
-                        node.recycle();
-                        return true;
-                    }
-                    node.recycle();
+            long elapsed = System.currentTimeMillis() - blockerHeroKillLoopStartTime;
+
+            // If Blocker Hero is NOT active anymore, and we have already successfully blocked it:
+            if (!isBlockerHeroActive && (hasBlockedCurrentBlockerHero || elapsed > 300)) {
+                dismissOverlayWithAnimation();
+                isBlockerHeroKillLoopActive = false;
+                return;
+            }
+
+            // Self-schedule the next iteration dynamically (10ms polling during the critical phase, then 100ms)
+            if (isBlockerHeroKillLoopActive) {
+                if (elapsed < 1500) {
+                    long delay = (elapsed < 600) ? 10L : 100L;
+                    mainHandler.postDelayed(this, delay);
+                } else {
+                    dismissOverlayWithAnimation();
+                    isBlockerHeroKillLoopActive = false;
                 }
             }
         }
-        return false;
-    }
+    };
 
-    private boolean checkSelectedStateUpToDepth(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > 2) return false;
-        
-        if (node.isSelected()) return true;
-        
-        CharSequence desc = node.getContentDescription();
-        if (desc != null && desc.toString().toLowerCase().contains("selected")) {
-            return true;
-        }
-        
-        AccessibilityNodeInfo parent = node.getParent();
-        if (parent != null) {
-            boolean isParentSelected = checkSelectedStateUpToDepth(parent, depth + 1);
-            parent.recycle();
-            return isParentSelected;
-        }
-        return false;
-    }
+    private void startBlockerHeroKillLoop() {
+        isBlockerHeroKillLoopActive = true;
+        blockerHeroKillLoopStartTime = System.currentTimeMillis();
+        hasBlockedCurrentBlockerHero = false;
 
-    private boolean isSettingsTabClick(String s) {
-        if (s == null) return false;
-        String lower = s.toLowerCase().trim();
-        return lower.contains("settings") || 
-               lower.contains("সেটিংস") || 
-               lower.contains("সেটিং") || 
-               lower.contains("setting");
-    }
+        mainHandler.removeCallbacks(blockerHeroKillRunnable);
+        blockerHeroKillRunnable.run();
 
-    private boolean hasSettingsTabText(AccessibilityNodeInfo node) {
-        if (node == null) return false;
-        
-        CharSequence txt = node.getText();
-        if (txt != null && isSettingsTabClick(txt.toString())) return true;
-        
-        CharSequence desc = node.getContentDescription();
-        if (desc != null && isSettingsTabClick(desc.toString())) return true;
-        
-        return hasSettingsTabTextInChildren(node, 0);
-    }
-
-    private boolean hasSettingsTabTextInChildren(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth >= 3) return false;
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child != null) {
-                CharSequence txt = child.getText();
-                if (txt != null && isSettingsTabClick(txt.toString())) {
-                    child.recycle();
-                    return true;
+        // Safety timeout to automatically dismiss the overlay after 1.5 seconds
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (isBlockerHeroKillLoopActive) {
+                    isBlockerHeroKillLoopActive = false;
+                    dismissOverlayWithAnimation();
                 }
-                CharSequence desc = child.getContentDescription();
-                if (desc != null && isSettingsTabClick(desc.toString())) {
-                    child.recycle();
-                    return true;
-                }
-                if (hasSettingsTabTextInChildren(child, depth + 1)) {
-                    child.recycle();
-                    return true;
-                }
-                child.recycle();
             }
-        }
-        return false;
+        }, 1500);
+    }
+
+    private void stopBlockerHeroKillLoop() {
+        isBlockerHeroKillLoopActive = false;
+        mainHandler.removeCallbacks(blockerHeroKillRunnable);
+        dismissOverlayWithAnimation();
+    }
+
+    private void doBlockerHeroCompleteBlock() {
+        hasBlockedCurrentBlockerHero = true;
+        showInstantZeroFlashOverlay();
+        performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
     @Override
