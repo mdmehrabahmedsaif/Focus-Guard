@@ -196,7 +196,7 @@ public class BlockerService extends AccessibilityService {
 
         // GLOBAL PROTECTION SCAN (Non-FocusGuard apps only - gated to Settings/Installer for maximum performance)
         if (!pkgName.equals(OUR_PACKAGE)) {
-            boolean isSettingsPkg = pkgName.contains("settings");
+            isSettingsPkg = pkgName.contains("settings");
             boolean isInstallerPkg = pkgName.contains("packageinstaller") || pkgName.contains("installer");
             boolean isSystemPkg = "android".equals(pkgName) || "com.android.systemui".equals(pkgName);
             
