@@ -92,6 +92,7 @@ public class BlockerService extends AccessibilityService {
         stopWhatsAppKillLoop();
         stopGoogleAssistantKillLoop();
         destroyGhostShield();
+        hideDnsTouchBlocker();
         instance = null;
         return super.onUnbind(intent);
     }
@@ -109,6 +110,10 @@ public class BlockerService extends AccessibilityService {
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
+
+        if (!prefManager.isPrivateDNSBlocked() || !pkgName.contains("settings")) {
+            hideDnsTouchBlocker();
+        }
 
         // 0.00s Instant Google Assistant & Google App Blocker
         if (prefManager.isGoogleAssistantBlocked()) {
@@ -674,7 +679,142 @@ public class BlockerService extends AccessibilityService {
         return false;
     }
 
+    private View dnsTouchBlocker = null;
+    private WindowManager.LayoutParams dnsTouchBlockerParams = null;
+
+    private void showDnsTouchBlocker(Rect rect) {
+        mainHandler.post(() -> {
+            try {
+                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                if (wm == null) return;
+
+                if (dnsTouchBlocker == null) {
+                    dnsTouchBlocker = new View(BlockerService.this);
+                    dnsTouchBlocker.setBackgroundColor(Color.TRANSPARENT);
+                    dnsTouchBlocker.setOnTouchListener((v, event) -> true);
+
+                    dnsTouchBlockerParams = new WindowManager.LayoutParams(
+                        rect.width(),
+                        rect.height(),
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        PixelFormat.TRANSLUCENT
+                    );
+                    dnsTouchBlockerParams.gravity = Gravity.LEFT | Gravity.TOP;
+                    dnsTouchBlockerParams.x = rect.left;
+                    dnsTouchBlockerParams.y = rect.top;
+
+                    wm.addView(dnsTouchBlocker, dnsTouchBlockerParams);
+                } else {
+                    if (dnsTouchBlockerParams.x != rect.left || 
+                        dnsTouchBlockerParams.y != rect.top || 
+                        dnsTouchBlockerParams.width != rect.width() || 
+                        dnsTouchBlockerParams.height != rect.height()) {
+                        
+                        dnsTouchBlockerParams.width = rect.width();
+                        dnsTouchBlockerParams.height = rect.height();
+                        dnsTouchBlockerParams.x = rect.left;
+                        dnsTouchBlockerParams.y = rect.top;
+                        wm.updateViewLayout(dnsTouchBlocker, dnsTouchBlockerParams);
+                    }
+                }
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private void hideDnsTouchBlocker() {
+        mainHandler.post(() -> {
+            if (dnsTouchBlocker != null) {
+                try {
+                    WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                    if (wm != null) {
+                        wm.removeView(dnsTouchBlocker);
+                    }
+                } catch (Exception ignored) {}
+                dnsTouchBlocker = null;
+                dnsTouchBlockerParams = null;
+            }
+        });
+    }
+
+    private AccessibilityNodeInfo findPrivateDNSListItem(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+        
+        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Private DNS");
+        if (hits == null || hits.isEmpty()) {
+            hits = root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস");
+        }
+        if (hits == null || hits.isEmpty()) {
+            hits = root.findAccessibilityNodeInfosByText("প্রাইভেট DNS");
+        }
+        
+        if (hits != null) {
+            for (AccessibilityNodeInfo hit : hits) {
+                if (hit == null) continue;
+                
+                if (isEditableNode(hit)) {
+                    hit.recycle();
+                    continue;
+                }
+                
+                AccessibilityNodeInfo clickableAncestor = findClickableAncestor(hit);
+                hit.recycle();
+                
+                if (clickableAncestor != null) {
+                    if (hasSearchResultBreadcrumbs(clickableAncestor, 0)) {
+                        clickableAncestor.recycle();
+                        continue;
+                    }
+                    return clickableAncestor;
+                }
+            }
+        }
+        return null;
+    }
+
+    private AccessibilityNodeInfo findClickableAncestor(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo current = node;
+        int depth = 0;
+        while (current != null && depth < 5) {
+            if (current.isClickable()) {
+                return AccessibilityNodeInfo.obtain(current);
+            }
+            AccessibilityNodeInfo parent = current.getParent();
+            if (current != node) {
+                current.recycle();
+            }
+            current = parent;
+            depth++;
+        }
+        if (current != null && current != node) {
+            current.recycle();
+        }
+        return null;
+    }
+
     private void handlePrivateDNSProtection(AccessibilityEvent event, int eventType) {
+        // Manage Touch Blocker Overlay dynamically on window content/state changes
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null) {
+            try {
+                AccessibilityNodeInfo dnsItem = findPrivateDNSListItem(root);
+                if (dnsItem != null) {
+                    Rect rect = new Rect();
+                    dnsItem.getBoundsInScreen(rect);
+                    dnsItem.recycle();
+                    showDnsTouchBlocker(rect);
+                } else {
+                    hideDnsTouchBlocker();
+                }
+            } finally {
+                root.recycle();
+            }
+        } else {
+            hideDnsTouchBlocker();
+        }
+
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
@@ -709,16 +849,32 @@ public class BlockerService extends AccessibilityService {
 
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
             eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root != null) {
+            
+            // Speed up window state dialog auto-dismissal using local event texts
+            String eventTxt = getEventText(event).toLowerCase();
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                (eventTxt.contains("select private dns mode") || 
+                 eventTxt.contains("select private dns") ||
+                 eventTxt.contains("private dns provider hostname") ||
+                 eventTxt.contains("প্রাইভেট ডিএনএস") ||
+                 eventTxt.contains("প্রাইভেট dns"))) {
+                
+                showInstantZeroFlashOverlay();
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                mainHandler.postDelayed(this::dismissOverlayWithAnimation, 50);
+                return;
+            }
+
+            AccessibilityNodeInfo rootInW = getRootInActiveWindow();
+            if (rootInW != null) {
                 try {
-                    if (isPrivateDNSScreen(root)) {
+                    if (isPrivateDNSScreen(rootInW)) {
                         showInstantZeroFlashOverlay();
                         performGlobalAction(GLOBAL_ACTION_BACK);
                         mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
                     }
                 } finally {
-                    root.recycle();
+                    rootInW.recycle();
                 }
             }
         }
