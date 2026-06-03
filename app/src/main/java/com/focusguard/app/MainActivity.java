@@ -31,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
     private View btnSavePassword;
     private SwitchCompat swWhatsApp, swYouTube, swInstagram, swGoogleAssistant, swGoogleDocs, swPrivateDNS, swBlockerHero, swBlockAcc, swBlockAdmin;
     private EditText etPassword;
+    private boolean isSyncingUI = false;
 
     private static final int REQ_ADMIN = 101;
 
@@ -127,39 +128,50 @@ public class MainActivity extends AppCompatActivity {
 
         // --- App Blocking Switches ---
         swWhatsApp.setOnCheckedChangeListener((b, checked) -> {
+            if (isSyncingUI) return;
             pref.setWhatsAppBlocked(checked);
             pref.setServiceActive(checked || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swYouTube.setOnCheckedChangeListener((b, checked) -> {
+            if (isSyncingUI) return;
             pref.setYouTubeBlocked(checked);
             pref.setServiceActive(pref.isWhatsAppBlocked() || checked || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swInstagram.setOnCheckedChangeListener((b, checked) -> {
+            if (isSyncingUI) return;
             pref.setInstagramBlocked(checked);
             pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || checked || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swGoogleAssistant.setOnCheckedChangeListener((b, checked) -> {
+            if (isSyncingUI) return;
             pref.setGoogleAssistantBlocked(checked);
             pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || checked || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swGoogleDocs.setOnCheckedChangeListener((b, checked) -> {
+            if (isSyncingUI) return;
             pref.setGoogleDocsBlocked(checked);
             pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || checked || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swPrivateDNS.setOnCheckedChangeListener((b, checked) -> {
+            if (isSyncingUI) return;
             pref.setPrivateDNSBlocked(checked);
             pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || checked || pref.isBlockerHeroBlocked());
         });
         swBlockerHero.setOnCheckedChangeListener((b, checked) -> {
+            if (isSyncingUI) return;
             pref.setBlockerHeroBlocked(checked);
             pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || checked);
         });
 
         // Independent protection locks
-        swBlockAcc.setOnCheckedChangeListener((b, checked) ->
-            pref.setAccessibilityProtected(checked));
-        swBlockAdmin.setOnCheckedChangeListener((b, checked) ->
-            pref.setDeviceAdminProtected(checked));
+        swBlockAcc.setOnCheckedChangeListener((b, checked) -> {
+            if (isSyncingUI) return;
+            pref.setAccessibilityProtected(checked);
+        });
+        swBlockAdmin.setOnCheckedChangeListener((b, checked) -> {
+            if (isSyncingUI) return;
+            pref.setDeviceAdminProtected(checked);
+        });
 
         // --- Save Password ---
         btnSavePassword.setOnClickListener(v -> {
@@ -222,47 +234,52 @@ public class MainActivity extends AppCompatActivity {
     private void syncUIWithState() {
         if (isFinishing() || tvAdminStatus == null) return;
 
-        boolean adminOn   = dpm.isAdminActive(adminComponent);
-        boolean serviceOn = isAccessibilityServiceEnabled();
+        isSyncingUI = true;
+        try {
+            boolean adminOn   = dpm.isAdminActive(adminComponent);
+            boolean serviceOn = isAccessibilityServiceEnabled();
 
-        // Service status
-        if (serviceOn) {
-            tvAccessibilityStatus.setText("CORE SERVICE: ACTIVE");
-            tvAccessibilityStatus.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
-            btnEnableAccessibility.setVisibility(View.GONE);
-            btnDisableAccessibility.setVisibility(View.VISIBLE);
-        } else {
-            tvAccessibilityStatus.setText("CORE SERVICE: OFFLINE");
-            tvAccessibilityStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_rose));
-            btnEnableAccessibility.setVisibility(View.VISIBLE);
-            btnDisableAccessibility.setVisibility(View.GONE);
+            // Service status
+            if (serviceOn) {
+                tvAccessibilityStatus.setText("CORE SERVICE: ACTIVE");
+                tvAccessibilityStatus.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
+                btnEnableAccessibility.setVisibility(View.GONE);
+                btnDisableAccessibility.setVisibility(View.VISIBLE);
+            } else {
+                tvAccessibilityStatus.setText("CORE SERVICE: OFFLINE");
+                tvAccessibilityStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_rose));
+                btnEnableAccessibility.setVisibility(View.VISIBLE);
+                btnDisableAccessibility.setVisibility(View.GONE);
+            }
+
+            // Admin status
+            if (adminOn) {
+                tvAdminStatus.setText("CORE ADMIN: ACTIVE");
+                tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
+                btnEnableAdmin.setVisibility(View.GONE);
+                btnDisableAdmin.setVisibility(View.VISIBLE);
+            } else {
+                tvAdminStatus.setText("CORE ADMIN: OFFLINE");
+                tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_rose));
+                btnEnableAdmin.setVisibility(View.VISIBLE);
+                btnDisableAdmin.setVisibility(View.GONE);
+            }
+
+            // App blocking switches
+            swWhatsApp.setChecked(pref.isWhatsAppBlocked());
+            swYouTube.setChecked(pref.isYouTubeBlocked());
+            swInstagram.setChecked(pref.isInstagramBlocked());
+            swGoogleAssistant.setChecked(pref.isGoogleAssistantBlocked());
+            swGoogleDocs.setChecked(pref.isGoogleDocsBlocked());
+            swPrivateDNS.setChecked(pref.isPrivateDNSBlocked());
+            swBlockerHero.setChecked(pref.isBlockerHeroBlocked());
+
+            // Protection lock switches (independent)
+            swBlockAcc.setChecked(pref.isAccessibilityProtected());
+            swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
+        } finally {
+            isSyncingUI = false;
         }
-
-        // Admin status
-        if (adminOn) {
-            tvAdminStatus.setText("CORE ADMIN: ACTIVE");
-            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
-            btnEnableAdmin.setVisibility(View.GONE);
-            btnDisableAdmin.setVisibility(View.VISIBLE);
-        } else {
-            tvAdminStatus.setText("CORE ADMIN: OFFLINE");
-            tvAdminStatus.setTextColor(ContextCompat.getColor(this, R.color.danger_rose));
-            btnEnableAdmin.setVisibility(View.VISIBLE);
-            btnDisableAdmin.setVisibility(View.GONE);
-        }
-
-        // App blocking switches
-        swWhatsApp.setChecked(pref.isWhatsAppBlocked());
-        swYouTube.setChecked(pref.isYouTubeBlocked());
-        swInstagram.setChecked(pref.isInstagramBlocked());
-        swGoogleAssistant.setChecked(pref.isGoogleAssistantBlocked());
-        swGoogleDocs.setChecked(pref.isGoogleDocsBlocked());
-        swPrivateDNS.setChecked(pref.isPrivateDNSBlocked());
-        swBlockerHero.setChecked(pref.isBlockerHeroBlocked());
-
-        // Protection lock switches (independent)
-        swBlockAcc.setChecked(pref.isAccessibilityProtected());
-        swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
     }
 
     @Override protected void onResume()  { super.onResume();  syncUIWithState(); }

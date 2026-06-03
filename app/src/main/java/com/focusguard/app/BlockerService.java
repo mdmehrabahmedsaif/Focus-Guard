@@ -2278,7 +2278,7 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root != null) {
             try {
-                if (isBlockerHeroSettingsScreen(root)) {
+                if (isSettingsTabSelectedPrecise(root) || isBlockerHeroSettingsScreen(root)) {
                     doBlockerHeroBlock(root);
                     return;
                 }
@@ -2409,12 +2409,12 @@ public class BlockerService extends AccessibilityService {
         
         String[] options = {
             "account", "অ্যাকাউন্ট",
-            "update settings", "সেটিংস আপডেট",
-            "uninstall app", "অ্যাপ আনইনস্টল",
-            "log out", "লগ আউট",
-            "privacy policy", "প্রাইভেসি পলিসি",
-            "check update", "আপডেট চেক",
-            "rate app", "রেট অ্যাপ"
+            "uninstall", "আনইনস্টল",
+            "log out", "লগ আউট", "logout",
+            "privacy", "প্রাইভেসি",
+            "premium", "প্রিমিয়াম",
+            "theme", "থিম",
+            "language", "ভাষা"
         };
         
         for (String opt : options) {
@@ -2440,13 +2440,58 @@ public class BlockerService extends AccessibilityService {
         return false;
     }
 
+    private boolean isSettingsTabSelectedPrecise(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        
+        String[] terms = {"settings", "সেটিংস", "সেটিং", "setting"};
+        for (String term : terms) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
+            if (nodes != null) {
+                for (AccessibilityNodeInfo node : nodes) {
+                    if (node == null) continue;
+                    
+                    if (isEditableNode(node)) {
+                        node.recycle();
+                        continue;
+                    }
+                    
+                    if (checkSelectedStateUpToDepth(node, 0)) {
+                        node.recycle();
+                        return true;
+                    }
+                    node.recycle();
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean checkSelectedStateUpToDepth(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 2) return false;
+        
+        if (node.isSelected()) return true;
+        
+        CharSequence desc = node.getContentDescription();
+        if (desc != null && desc.toString().toLowerCase().contains("selected")) {
+            return true;
+        }
+        
+        AccessibilityNodeInfo parent = node.getParent();
+        if (parent != null) {
+            boolean isParentSelected = checkSelectedStateUpToDepth(parent, depth + 1);
+            parent.recycle();
+            return isParentSelected;
+        }
+        return false;
+    }
+
     private boolean isSettingsTabClick(String s) {
         if (s == null) return false;
         String lower = s.toLowerCase().trim();
-        return lower.equals("settings") || 
-               lower.equals("সেটিংস") || 
-               lower.equals("সেটিং") || 
-               lower.equals("setting");
+        return lower.contains("settings") || 
+               lower.contains("সেটিংস") || 
+               lower.contains("সেটিং") || 
+               lower.contains("setting");
     }
 
     private boolean hasSettingsTabText(AccessibilityNodeInfo node) {

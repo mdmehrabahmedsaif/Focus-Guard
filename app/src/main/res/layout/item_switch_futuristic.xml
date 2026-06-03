@@ -44,6 +44,7 @@
         android:id="@+id/itemSwitch"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:saveEnabled="false"
         android:thumbTint="@color/neon_blue"
         android:trackTint="@color/card_glass"/>
 </LinearLayout>
