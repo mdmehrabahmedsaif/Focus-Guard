@@ -29,7 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvAdminStatus, tvAccessibilityStatus;
     private View btnEnableAdmin, btnDisableAdmin, btnEnableAccessibility, btnDisableAccessibility;
     private View btnSavePassword;
-    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swGoogleAssistant, swGoogleDocs, swPrivateDNS, swBlockAcc, swBlockAdmin;
+    private SwitchCompat swWhatsApp, swYouTube, swInstagram, swGoogleAssistant, swGoogleDocs, swPrivateDNS, swBlockerHero, swBlockAcc, swBlockAdmin;
     private EditText etPassword;
 
     private static final int REQ_ADMIN = 101;
@@ -68,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
         setupAppRow(R.id.rowGoogleAssistant, "🎙️", "Google Assistant & App", "Block Google search & voice assistant");
         setupAppRow(R.id.rowGoogleDocs,"📝", "Google Docs",      "Block web image search");
         setupAppRow(R.id.rowPrivateDNS,"🌐", "Private DNS Settings", "Block access to Private DNS settings");
+        setupAppRow(R.id.rowBlockerHero,"🛡️", "Blocker Hero Settings", "Block settings screen of Blocker Hero");
 
         swWhatsApp  = findViewById(R.id.rowWhatsApp).findViewById(R.id.itemSwitch);
         swYouTube   = findViewById(R.id.rowYouTube).findViewById(R.id.itemSwitch);
@@ -75,6 +76,7 @@ public class MainActivity extends AppCompatActivity {
         swGoogleAssistant = findViewById(R.id.rowGoogleAssistant).findViewById(R.id.itemSwitch);
         swGoogleDocs = findViewById(R.id.rowGoogleDocs).findViewById(R.id.itemSwitch);
         swPrivateDNS = findViewById(R.id.rowPrivateDNS).findViewById(R.id.itemSwitch);
+        swBlockerHero = findViewById(R.id.rowBlockerHero).findViewById(R.id.itemSwitch);
         swBlockAcc   = findViewById(R.id.switchBlockAccessibility);
         swBlockAdmin = findViewById(R.id.switchBlockDeviceAdmin);
 
@@ -126,27 +128,31 @@ public class MainActivity extends AppCompatActivity {
         // --- App Blocking Switches ---
         swWhatsApp.setOnCheckedChangeListener((b, checked) -> {
             pref.setWhatsAppBlocked(checked);
-            pref.setServiceActive(checked || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked());
+            pref.setServiceActive(checked || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swYouTube.setOnCheckedChangeListener((b, checked) -> {
             pref.setYouTubeBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || checked || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked());
+            pref.setServiceActive(pref.isWhatsAppBlocked() || checked || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swInstagram.setOnCheckedChangeListener((b, checked) -> {
             pref.setInstagramBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || checked || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked());
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || checked || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swGoogleAssistant.setOnCheckedChangeListener((b, checked) -> {
             pref.setGoogleAssistantBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || checked || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked());
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || checked || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swGoogleDocs.setOnCheckedChangeListener((b, checked) -> {
             pref.setGoogleDocsBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || checked || pref.isPrivateDNSBlocked());
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || checked || pref.isPrivateDNSBlocked() || pref.isBlockerHeroBlocked());
         });
         swPrivateDNS.setOnCheckedChangeListener((b, checked) -> {
             pref.setPrivateDNSBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || checked);
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || checked || pref.isBlockerHeroBlocked());
+        });
+        swBlockerHero.setOnCheckedChangeListener((b, checked) -> {
+            pref.setBlockerHeroBlocked(checked);
+            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isYouTubeBlocked() || pref.isInstagramBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isPrivateDNSBlocked() || checked);
         });
 
         // Independent protection locks
@@ -252,6 +258,7 @@ public class MainActivity extends AppCompatActivity {
         swGoogleAssistant.setChecked(pref.isGoogleAssistantBlocked());
         swGoogleDocs.setChecked(pref.isGoogleDocsBlocked());
         swPrivateDNS.setChecked(pref.isPrivateDNSBlocked());
+        swBlockerHero.setChecked(pref.isBlockerHeroBlocked());
 
         // Protection lock switches (independent)
         swBlockAcc.setChecked(pref.isAccessibilityProtected());

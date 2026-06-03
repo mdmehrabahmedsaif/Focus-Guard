@@ -39,6 +39,7 @@ public class BlockerService extends AccessibilityService {
     private static final String PKG_GOOGLE_DOCS = "com.google.android.apps.docs.editors.docs";
     private static final String PKG_GOOGLE_ASSISTANT = "com.google.android.apps.googleassistant";
     private static final String PKG_GOOGLE_APP = "com.google.android.googlequicksearchbox";
+    private static final String PKG_BLOCKER_HERO = "com.blockerhero";
 
     private static final String OUR_PACKAGE   = "com.focusguard.app";
     private static final String SERVICE_LABEL = "Focus Guard";
@@ -208,7 +209,7 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // App Blocking logic (WhatsApp, YouTube, Instagram)
+        // App Blocking logic (WhatsApp, YouTube, Instagram, Blocker Hero)
         if (PKG_WHATSAPP.equals(pkgName)) {
             if (prefManager.isWhatsAppBlocked()) {
                 handleWhatsApp(event, eventType);
@@ -222,6 +223,10 @@ public class BlockerService extends AccessibilityService {
                     && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                      || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
                 handleInstagram();
+            }
+        } else if (PKG_BLOCKER_HERO.equals(pkgName)) {
+            if (prefManager.isBlockerHeroBlocked()) {
+                handleBlockerHero(event, eventType);
             }
         } 
         
@@ -2262,6 +2267,133 @@ public class BlockerService extends AccessibilityService {
         CharSequence desc = event.getContentDescription();
         if (desc != null) sb.append(desc);
         return sb.toString();
+    }
+
+    // =========================================================================
+    // BLOCKER HERO BLOCKING
+    // =========================================================================
+
+    private void handleBlockerHero(AccessibilityEvent event, int eventType) {
+        // 1. Click Interception (Zero-flash, instant kickout)
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            String text = getEventText(event).toLowerCase();
+            if (text.contains("settings") || text.contains("সেটিংস") || text.contains("সেটিং") || text.contains("setting")) {
+                triggerKickOut();
+                return;
+            }
+            
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                try {
+                    if (hasSettingsText(source)) {
+                        triggerKickOut();
+                        return;
+                    }
+                } finally {
+                    source.recycle();
+                }
+            }
+        }
+        
+        // 2. Window State Check (Zero-IPC activity/class check)
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            CharSequence className = event.getClassName();
+            if (className != null) {
+                String clsName = className.toString().toLowerCase();
+                if (clsName.contains("setting")) {
+                    triggerKickOut();
+                    return;
+                }
+            }
+        }
+        
+        // 3. Dynamic Screen Scan on Content/Window Changes
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    if (isSettingsTabSelected(root)) {
+                        triggerKickOut();
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+        }
+    }
+
+    private boolean hasSettingsText(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        
+        CharSequence txt = node.getText();
+        if (txt != null && isSettingsText(txt.toString())) return true;
+        
+        CharSequence desc = node.getContentDescription();
+        if (desc != null && isSettingsText(desc.toString())) return true;
+        
+        return hasSettingsTextInChildren(node, 0);
+    }
+    
+    private boolean isSettingsText(String s) {
+        if (s == null) return false;
+        String lower = s.toLowerCase().trim();
+        return lower.equals("settings") || 
+               lower.equals("সেটিংস") || 
+               lower.equals("সেটিং") || 
+               lower.equals("setting");
+    }
+
+    private boolean hasSettingsTextInChildren(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth >= 3) return false;
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                CharSequence txt = child.getText();
+                if (txt != null && isSettingsText(txt.toString())) {
+                    child.recycle();
+                    return true;
+                }
+                CharSequence desc = child.getContentDescription();
+                if (desc != null && isSettingsText(desc.toString())) {
+                    child.recycle();
+                    return true;
+                }
+                if (hasSettingsTextInChildren(child, depth + 1)) {
+                    child.recycle();
+                    return true;
+                }
+                child.recycle();
+            }
+        }
+        return false;
+    }
+
+    private boolean isSettingsTabSelected(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        
+        CharSequence txt = node.getText();
+        CharSequence desc = node.getContentDescription();
+        String text = txt != null ? txt.toString().toLowerCase() : "";
+        String sDesc = desc != null ? desc.toString().toLowerCase() : "";
+        
+        if (text.equals("settings") || text.equals("সেটিংস") || text.equals("সেটিং") || text.equals("setting") ||
+            sDesc.contains("settings") || sDesc.contains("সেটিংস") || sDesc.contains("সেটিং") || sDesc.contains("setting")) {
+            if (node.isSelected() || isAncestorSelected(node) || sDesc.contains("selected")) {
+                return true;
+            }
+        }
+        
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                boolean result = isSettingsTabSelected(child);
+                child.recycle();
+                if (result) return true;
+            }
+        }
+        return false;
     }
 
     @Override

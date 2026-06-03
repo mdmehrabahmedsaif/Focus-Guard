@@ -17,6 +17,7 @@ public class PreferenceManager {
     private static final String KEY_BLOCK_DEVICE_ADMIN = "block_device_admin";
     private static final String KEY_BLOCK_UNINSTALL = "block_uninstall";
     private static final String KEY_BLOCK_PRIVATE_DNS = "block_private_dns";
+    private static final String KEY_BLOCK_BLOCKER_HERO = "block_blocker_hero";
     private static final String KEY_EMERGENCY_PASSWORD = "emergency_password";
     private static final String KEY_TIMER_END_TIME = "timer_end_time";
 
@@ -104,6 +105,14 @@ public class PreferenceManager {
 
     public boolean isPrivateDNSBlocked() {
         return prefs.getBoolean(KEY_BLOCK_PRIVATE_DNS, true);
+    }
+
+    public void setBlockerHeroBlocked(boolean blocked) {
+        prefs.edit().putBoolean(KEY_BLOCK_BLOCKER_HERO, blocked).apply();
+    }
+
+    public boolean isBlockerHeroBlocked() {
+        return prefs.getBoolean(KEY_BLOCK_BLOCKER_HERO, false);
     }
 
     public void setEmergencyPassword(String password) {
