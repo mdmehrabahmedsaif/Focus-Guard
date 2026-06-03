@@ -196,6 +196,10 @@ public class BlockerService extends AccessibilityService {
                 if (prefManager.isUninstallProtected()) {
                     handleUninstallProtection(event, eventType);
                 }
+                // Check Private DNS Protection
+                if (prefManager.isPrivateDNSBlocked() && isSettingsPkg) {
+                    handlePrivateDNSProtection(event, eventType);
+                }
             }
         }
 
@@ -518,7 +522,125 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
+    private boolean isPrivateDNSText(String s) {
+        if (s == null) return false;
+        String lower = s.toLowerCase();
+        return lower.contains("private dns") || 
+               lower.contains("প্রাইভেট ডিএনএস") || 
+               lower.contains("প্রাইভেট dns");
+    }
 
+    private boolean isPrivateDNSNode(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        
+        // Skip editable nodes to avoid blocking settings search input
+        if (isEditableNode(node)) return false;
+
+        // Check text
+        CharSequence txt = node.getText();
+        if (txt != null && isPrivateDNSText(txt.toString())) return true;
+
+        // Check content description
+        CharSequence desc = node.getContentDescription();
+        if (desc != null && isPrivateDNSText(desc.toString())) return true;
+
+        // Check children recursively
+        return isPrivateDNSInChildren(node, 0);
+    }
+
+    private boolean isPrivateDNSInChildren(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth >= 3) return false;
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                if (isEditableNode(child)) {
+                    child.recycle();
+                    continue;
+                }
+                CharSequence ctxt = child.getText();
+                if (ctxt != null && isPrivateDNSText(ctxt.toString())) {
+                    child.recycle();
+                    return true;
+                }
+                CharSequence cdesc = child.getContentDescription();
+                if (cdesc != null && isPrivateDNSText(cdesc.toString())) {
+                    child.recycle();
+                    return true;
+                }
+                if (isPrivateDNSInChildren(child, depth + 1)) {
+                    child.recycle();
+                    return true;
+                }
+                child.recycle();
+            }
+        }
+        return false;
+    }
+
+    private boolean isPrivateDNSScreen(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+
+        // Find nodes with "Private DNS" or translation
+        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("Private DNS");
+        if (hits == null || hits.isEmpty()) {
+            hits = root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস");
+        }
+        if (hits == null || hits.isEmpty()) {
+            hits = root.findAccessibilityNodeInfosByText("প্রাইভেট DNS");
+        }
+
+        if (hits != null && !hits.isEmpty()) {
+            boolean isDNSDetailScreen = !root.findAccessibilityNodeInfosByText("Select Private DNS Mode").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("Select private DNS mode").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("Private DNS provider hostname").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস প্রদানকারী").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট dns প্রদানকারী").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস মোড").isEmpty() ||
+                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট dns মোড").isEmpty();
+
+            for (AccessibilityNodeInfo n : hits) n.recycle();
+
+            if (isDNSDetailScreen) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void handlePrivateDNSProtection(AccessibilityEvent event, int eventType) {
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            String text = getEventText(event).toLowerCase();
+            if (isPrivateDNSText(text)) {
+                triggerKickOut();
+                return;
+            }
+
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                if (isPrivateDNSNode(source)) {
+                    source.recycle();
+                    triggerKickOut();
+                    return;
+                }
+                source.recycle();
+            }
+        }
+
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    if (isPrivateDNSScreen(root)) {
+                        triggerKickOut();
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+        }
+    }
 
     private void triggerKickOut() {
         // Instant kick-out for sub-0.1s reaction
