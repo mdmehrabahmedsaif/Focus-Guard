@@ -113,7 +113,14 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
 
-        if (!prefManager.isPrivateDNSBlocked() || !pkgName.contains("settings")) {
+        boolean isSettingsPkg = pkgName.contains("settings");
+        boolean isSystemOrKeyboardPkg = "android".equals(pkgName) || 
+                                         "com.android.systemui".equals(pkgName) || 
+                                         pkgName.contains("inputmethod") || 
+                                         pkgName.contains("keyboard") || 
+                                         pkgName.contains("ime");
+
+        if (!prefManager.isPrivateDNSBlocked() || (!isSettingsPkg && !isSystemOrKeyboardPkg)) {
             hideDnsTouchBlocker();
         }
 
@@ -191,14 +198,15 @@ public class BlockerService extends AccessibilityService {
         if (!pkgName.equals(OUR_PACKAGE)) {
             boolean isSettingsPkg = pkgName.contains("settings");
             boolean isInstallerPkg = pkgName.contains("packageinstaller") || pkgName.contains("installer");
+            boolean isSystemPkg = "android".equals(pkgName) || "com.android.systemui".equals(pkgName);
             
-            if (isSettingsPkg || isInstallerPkg) {
+            if (isSettingsPkg || isInstallerPkg || isSystemPkg) {
                 // Check Accessibility Protection
-                if (prefManager.isAccessibilityProtected()) {
+                if (prefManager.isAccessibilityProtected() && (isSettingsPkg || isSystemPkg)) {
                     handleAccessibilityProtection(event, eventType, pkgName);
                 }
                 // Check Device Admin Protection
-                if (prefManager.isDeviceAdminProtected() && isSettingsPkg) {
+                if (prefManager.isDeviceAdminProtected() && (isSettingsPkg || isSystemPkg)) {
                     handleAdminProtection(event, eventType);
                 }
                 // Check Uninstall Protection
@@ -206,7 +214,7 @@ public class BlockerService extends AccessibilityService {
                     handleUninstallProtection(event, eventType);
                 }
                 // Check Private DNS Protection
-                if (prefManager.isPrivateDNSBlocked() && isSettingsPkg) {
+                if (prefManager.isPrivateDNSBlocked() && (isSettingsPkg || isSystemPkg)) {
                     handlePrivateDNSProtection(event, eventType);
                 }
             }
@@ -613,7 +621,12 @@ public class BlockerService extends AccessibilityService {
                                         !root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস প্রদানকারী").isEmpty() ||
                                         !root.findAccessibilityNodeInfosByText("প্রাইভেট dns প্রদানকারী").isEmpty() ||
                                         !root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস মোড").isEmpty() ||
-                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট dns মোড").isEmpty();
+                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট dns মোড").isEmpty() ||
+                                        ((!root.findAccessibilityNodeInfosByText("Save").isEmpty() || 
+                                          !root.findAccessibilityNodeInfosByText("সংরক্ষণ").isEmpty() || 
+                                          !root.findAccessibilityNodeInfosByText("সেভ").isEmpty()) &&
+                                         (!root.findAccessibilityNodeInfosByText("Cancel").isEmpty() || 
+                                          !root.findAccessibilityNodeInfosByText("বাতিল").isEmpty()));
 
             for (AccessibilityNodeInfo n : hits) n.recycle();
 
@@ -695,7 +708,7 @@ public class BlockerService extends AccessibilityService {
     private WindowManager.LayoutParams dnsTouchBlockerParams = null;
 
     private void showDnsTouchBlocker(Rect rect) {
-        mainHandler.post(() -> {
+        Runnable r = () -> {
             try {
                 WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
                 if (wm == null) return;
@@ -733,11 +746,17 @@ public class BlockerService extends AccessibilityService {
                     }
                 }
             } catch (Exception ignored) {}
-        });
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
     }
 
     private void hideDnsTouchBlocker() {
-        mainHandler.post(() -> {
+        Runnable r = () -> {
             if (dnsTouchBlocker != null) {
                 try {
                     WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
@@ -748,7 +767,13 @@ public class BlockerService extends AccessibilityService {
                 dnsTouchBlocker = null;
                 dnsTouchBlockerParams = null;
             }
-        });
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
     }
 
     private AccessibilityNodeInfo findPrivateDNSListItem(AccessibilityNodeInfo root) {
@@ -818,13 +843,15 @@ public class BlockerService extends AccessibilityService {
                     dnsItem.recycle();
                     showDnsTouchBlocker(rect);
                 } else {
-                    hideDnsTouchBlocker();
+                    // Prevent hiding the touch blocker if we are currently on the Private DNS screen/dialog.
+                    // This ensures the blocker remains in place ready to intercept subsequent taps.
+                    if (!isPrivateDNSScreen(root)) {
+                        hideDnsTouchBlocker();
+                    }
                 }
             } finally {
                 root.recycle();
             }
-        } else {
-            hideDnsTouchBlocker();
         }
 
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
