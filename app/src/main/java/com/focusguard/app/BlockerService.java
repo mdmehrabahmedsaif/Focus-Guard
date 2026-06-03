@@ -44,7 +44,7 @@ public class BlockerService extends AccessibilityService {
     private static final String SERVICE_LABEL = "Focus Guard";
 
     private boolean isGoogleDocsPackage(String pkgName) {
-        return pkgName != null && pkgName.startsWith("com.google.android.apps.docs");
+        return pkgName != null && pkgName.startsWith("com.google.android.apps.docs.editors");
     }
 
     private boolean isMonitoredSearchPackage(String pkgName) {
