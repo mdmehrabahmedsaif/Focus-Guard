@@ -612,7 +612,9 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             String text = getEventText(event).toLowerCase();
             if (isPrivateDNSText(text)) {
-                triggerKickOut();
+                showInstantZeroFlashOverlay();
+                performGlobalAction(GLOBAL_ACTION_BACK);
+                mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
                 return;
             }
 
@@ -620,7 +622,9 @@ public class BlockerService extends AccessibilityService {
             if (source != null) {
                 if (isPrivateDNSNode(source)) {
                     source.recycle();
-                    triggerKickOut();
+                    showInstantZeroFlashOverlay();
+                    performGlobalAction(GLOBAL_ACTION_BACK);
+                    mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
                     return;
                 }
                 source.recycle();
@@ -633,7 +637,9 @@ public class BlockerService extends AccessibilityService {
             if (root != null) {
                 try {
                     if (isPrivateDNSScreen(root)) {
-                        triggerKickOut();
+                        showInstantZeroFlashOverlay();
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
                     }
                 } finally {
                     root.recycle();
