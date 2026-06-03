@@ -2278,7 +2278,7 @@ public class BlockerService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root != null) {
             try {
-                if (isSettingsTabSelected(root)) {
+                if (isBlockerHeroSettingsScreen(root)) {
                     doBlockerHeroBlock(root);
                     return;
                 }
@@ -2287,10 +2287,10 @@ public class BlockerService extends AccessibilityService {
             }
         }
 
-        // 2. Click Interception (Zero-flash, instant redirection)
+        // 2. Click Interception on "Settings" tab (Zero-flash, instant redirection)
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             String text = getEventText(event).toLowerCase();
-            if (isBlockerHeroSettingsText(text)) {
+            if (isSettingsTabClick(text)) {
                 doBlockerHeroBlock(null);
                 return;
             }
@@ -2298,7 +2298,7 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
                 try {
-                    if (hasBlockerHeroSettingsText(source)) {
+                    if (hasSettingsTabText(source)) {
                         doBlockerHeroBlock(null);
                         return;
                     }
@@ -2402,82 +2402,85 @@ public class BlockerService extends AccessibilityService {
         return null;
     }
 
-    private boolean hasBlockerHeroSettingsText(AccessibilityNodeInfo node) {
+    private boolean isBlockerHeroSettingsScreen(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        
+        int matchCount = 0;
+        
+        String[] options = {
+            "account", "অ্যাকাউন্ট",
+            "update settings", "সেটিংস আপডেট",
+            "uninstall app", "অ্যাপ আনইনস্টল",
+            "log out", "লগ আউট",
+            "privacy policy", "প্রাইভেসি পলিসি",
+            "check update", "আপডেট চেক",
+            "rate app", "রেট অ্যাপ"
+        };
+        
+        for (String opt : options) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(opt);
+            if (nodes != null) {
+                if (!nodes.isEmpty()) {
+                    for (AccessibilityNodeInfo node : nodes) {
+                        if (node != null && !isEditableNode(node)) {
+                            matchCount++;
+                            node.recycle();
+                            break;
+                        } else if (node != null) {
+                            node.recycle();
+                        }
+                    }
+                }
+            }
+            if (matchCount >= 2) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    private boolean isSettingsTabClick(String s) {
+        if (s == null) return false;
+        String lower = s.toLowerCase().trim();
+        return lower.equals("settings") || 
+               lower.equals("সেটিংস") || 
+               lower.equals("সেটিং") || 
+               lower.equals("setting");
+    }
+
+    private boolean hasSettingsTabText(AccessibilityNodeInfo node) {
         if (node == null) return false;
         
         CharSequence txt = node.getText();
-        if (txt != null && isBlockerHeroSettingsText(txt.toString())) return true;
+        if (txt != null && isSettingsTabClick(txt.toString())) return true;
         
         CharSequence desc = node.getContentDescription();
-        if (desc != null && isBlockerHeroSettingsText(desc.toString())) return true;
+        if (desc != null && isSettingsTabClick(desc.toString())) return true;
         
-        return hasBlockerHeroSettingsTextInChildren(node, 0);
-    }
-    
-    private boolean isBlockerHeroSettingsText(String s) {
-        if (s == null) return false;
-        String lower = s.toLowerCase().trim();
-        return lower.equals("settings") || lower.equals("সেটিংস") || lower.equals("সেটিং") || lower.equals("setting") ||
-               lower.contains("account") || lower.contains("অ্যাকাউন্ট") ||
-               lower.contains("update settings") || lower.contains("সেটিংস আপডেট") ||
-               lower.contains("uninstall") || lower.contains("আনইনস্টল") ||
-               lower.contains("log out") || lower.contains("লগ আউট") ||
-               lower.contains("privacy policy") || lower.contains("প্রাইভেসি পলিসি") ||
-               lower.contains("check update") || lower.contains("আপডেট চেক") ||
-               lower.contains("rate app") || lower.contains("রেট অ্যাপ") ||
-               lower.contains("support") || lower.contains("সাপোর্ট");
+        return hasSettingsTabTextInChildren(node, 0);
     }
 
-    private boolean hasBlockerHeroSettingsTextInChildren(AccessibilityNodeInfo node, int depth) {
+    private boolean hasSettingsTabTextInChildren(AccessibilityNodeInfo node, int depth) {
         if (node == null || depth >= 3) return false;
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
                 CharSequence txt = child.getText();
-                if (txt != null && isBlockerHeroSettingsText(txt.toString())) {
+                if (txt != null && isSettingsTabClick(txt.toString())) {
                     child.recycle();
                     return true;
                 }
                 CharSequence desc = child.getContentDescription();
-                if (desc != null && isBlockerHeroSettingsText(desc.toString())) {
+                if (desc != null && isSettingsTabClick(desc.toString())) {
                     child.recycle();
                     return true;
                 }
-                if (hasBlockerHeroSettingsTextInChildren(child, depth + 1)) {
+                if (hasSettingsTabTextInChildren(child, depth + 1)) {
                     child.recycle();
                     return true;
                 }
                 child.recycle();
-            }
-        }
-        return false;
-    }
-
-    private boolean isSettingsTabSelected(AccessibilityNodeInfo node) {
-        return isSettingsTabSelected(node, 0);
-    }
-
-    private boolean isSettingsTabSelected(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > 10) return false;
-        
-        CharSequence txt = node.getText();
-        CharSequence desc = node.getContentDescription();
-        String text = txt != null ? txt.toString().toLowerCase() : "";
-        String sDesc = desc != null ? desc.toString().toLowerCase() : "";
-        
-        if (text.equals("settings") || text.equals("সেটিংস") || text.equals("সেটিং") || text.equals("setting") ||
-            sDesc.contains("settings") || sDesc.contains("সেটিংস") || sDesc.contains("সেটিং") || sDesc.contains("setting")) {
-            if (node.isSelected() || isAncestorSelected(node) || sDesc.contains("selected")) {
-                return true;
-            }
-        }
-        
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child != null) {
-                boolean result = isSettingsTabSelected(child, depth + 1);
-                child.recycle();
-                if (result) return true;
             }
         }
         return false;
