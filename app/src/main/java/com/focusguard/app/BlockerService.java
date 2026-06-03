@@ -843,9 +843,17 @@ public class BlockerService extends AccessibilityService {
                     dnsItem.recycle();
                     showDnsTouchBlocker(rect);
                 } else {
-                    // Prevent hiding the touch blocker if we are currently on the Private DNS screen/dialog.
-                    // This ensures the blocker remains in place ready to intercept subsequent taps.
-                    if (!isPrivateDNSScreen(root)) {
+                    // Prevent hiding the touch blocker if we are currently on the Private DNS screen/dialog
+                    // or in system/keyboard packages. This keeps the blocker active during launches.
+                    CharSequence activePkg = root.getPackageName();
+                    String activePkgStr = activePkg != null ? activePkg.toString().toLowerCase() : "";
+                    boolean isSystemOrKeyboardActive = "android".equals(activePkgStr) || 
+                                                       "com.android.systemui".equals(activePkgStr) || 
+                                                       activePkgStr.contains("inputmethod") || 
+                                                       activePkgStr.contains("keyboard") || 
+                                                       activePkgStr.contains("ime");
+                    
+                    if (!isSystemOrKeyboardActive && !isPrivateDNSScreen(root)) {
                         hideDnsTouchBlocker();
                     }
                 }
@@ -904,6 +912,22 @@ public class BlockerService extends AccessibilityService {
                 return;
             }
 
+            // Layer 1: Check event.getSource() first (most reliable during active transitions)
+            AccessibilityNodeInfo sourceNode = event.getSource();
+            if (sourceNode != null) {
+                try {
+                    if (isPrivateDNSScreen(sourceNode)) {
+                        showInstantZeroFlashOverlay();
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
+                        return;
+                    }
+                } finally {
+                    sourceNode.recycle();
+                }
+            }
+
+            // Layer 2: Check getRootInActiveWindow() (standard fallback)
             AccessibilityNodeInfo rootInW = getRootInActiveWindow();
             if (rootInW != null) {
                 try {
@@ -911,10 +935,36 @@ public class BlockerService extends AccessibilityService {
                         showInstantZeroFlashOverlay();
                         performGlobalAction(GLOBAL_ACTION_BACK);
                         mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
+                        return;
                     }
                 } finally {
                     rootInW.recycle();
                 }
+            }
+
+            // Layer 3: Multi-window scanner fallback (using getWindows())
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                try {
+                    List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+                    if (windows != null && !windows.isEmpty()) {
+                        for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+                            if (window == null) continue;
+                            AccessibilityNodeInfo windowRoot = window.getRoot();
+                            if (windowRoot != null) {
+                                try {
+                                    if (isPrivateDNSScreen(windowRoot)) {
+                                        showInstantZeroFlashOverlay();
+                                        performGlobalAction(GLOBAL_ACTION_BACK);
+                                        mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
+                                        break;
+                                    }
+                                } finally {
+                                    windowRoot.recycle();
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
             }
         }
     }
