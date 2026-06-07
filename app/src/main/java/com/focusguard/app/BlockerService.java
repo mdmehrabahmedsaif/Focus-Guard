@@ -856,7 +856,7 @@ public class BlockerService extends AccessibilityService {
                                                        activePkgStr.contains("keyboard") || 
                                                        activePkgStr.contains("ime");
                     
-                    if (!isSystemOrKeyboardActive && !isPrivateDNSScreen(root)) {
+                    if (!isSystemOrKeyboardActive && !isPrivateDNSScreenInAnyWindow(null)) {
                         hideDnsTouchBlocker();
                     }
                 }
@@ -922,95 +922,70 @@ public class BlockerService extends AccessibilityService {
                 return;
             }
 
-            // Layer 1: Check event.getSource() first (most reliable during active transitions)
             AccessibilityNodeInfo sourceNode = event.getSource();
-            if (sourceNode != null) {
-                try {
-                    if (isPrivateDNSScreen(sourceNode)) {
-                        doDnsBlock();
-                        if (!isDnsKillLoopActive) {
-                            startDnsKillLoop();
-                        }
-                        return;
-                    }
-                } finally {
-                    sourceNode.recycle();
+            if (isPrivateDNSScreenInAnyWindow(sourceNode)) {
+                doDnsBlock();
+                if (!isDnsKillLoopActive) {
+                    startDnsKillLoop();
                 }
-            }
-
-            // Layer 2: Check getRootInActiveWindow() (standard fallback)
-            AccessibilityNodeInfo rootInW = getRootInActiveWindow();
-            if (rootInW != null) {
-                try {
-                    if (isPrivateDNSScreen(rootInW)) {
-                        doDnsBlock();
-                        if (!isDnsKillLoopActive) {
-                            startDnsKillLoop();
-                        }
-                        return;
-                    }
-                } finally {
-                    rootInW.recycle();
-                }
-            }
-
-            // Layer 3: Multi-window scanner fallback (using getWindows())
-            // Only execute this heavier check on actual window state changes (not content changed)
-            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                try {
-                    List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
-                    if (windows != null && !windows.isEmpty()) {
-                        for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
-                            if (window == null) continue;
-                            AccessibilityNodeInfo windowRoot = window.getRoot();
-                            if (windowRoot != null) {
-                                try {
-                                    if (isPrivateDNSScreen(windowRoot)) {
-                                        doDnsBlock();
-                                        if (!isDnsKillLoopActive) {
-                                            startDnsKillLoop();
-                                        }
-                                        break;
-                                    }
-                                } finally {
-                                    windowRoot.recycle();
-                                }
-                            }
-                        }
-                    }
-                } catch (Exception ignored) {}
             }
         }
     }
 
     // =========================================================================
-    // PRIVATE DNS PROTECTION WATCHDOG LOOP
+    // PRIVATE DNS PROTECTION WATCHDOG LOOP & MULTI-WINDOW SCANNER
     // =========================================================================
     private boolean isDnsKillLoopActive = false;
     private long dnsKillLoopStartTime = 0;
     private boolean hasBlockedCurrentDns = false;
+
+    private boolean isPrivateDNSScreenInAnyWindow(AccessibilityNodeInfo eventSource) {
+        if (eventSource != null) {
+            if (isPrivateDNSScreen(eventSource)) {
+                return true;
+            }
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+                if (windows != null) {
+                    for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+                        if (window == null) continue;
+                        AccessibilityNodeInfo windowRoot = window.getRoot();
+                        if (windowRoot != null) {
+                            try {
+                                if (isPrivateDNSScreen(windowRoot)) {
+                                    return true;
+                                }
+                            } finally {
+                                windowRoot.recycle();
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
+        if (activeRoot != null) {
+            try {
+                if (isPrivateDNSScreen(activeRoot)) {
+                    return true;
+                }
+            } finally {
+                activeRoot.recycle();
+            }
+        }
+        return false;
+    }
 
     private final Runnable dnsKillRunnable = new Runnable() {
         @Override
         public void run() {
             if (!isDnsKillLoopActive) return;
 
-            boolean isDnsActive = false;
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root != null) {
-                try {
-                    if (isPrivateDNSScreen(root)) {
-                        isDnsActive = true;
-                        doDnsBlock();
-                    }
-                } finally {
-                    root.recycle();
-                }
-            } else {
-                // Keep overlay active during window state changes / loading transitions
-                isDnsActive = true;
-            }
+            boolean isDnsActive = isPrivateDNSScreenInAnyWindow(null);
 
             long elapsed = System.currentTimeMillis() - dnsKillLoopStartTime;
 
