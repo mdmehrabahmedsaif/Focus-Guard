@@ -666,6 +666,41 @@ public class BlockerService extends AccessibilityService {
         if (hits != null && !hits.isEmpty()) {
             for (AccessibilityNodeInfo n : hits) n.recycle();
 
+            // Check if this screen is the connection settings list itself
+            String[] listIndicators = {
+                "More connection settings", "Connections", "Network & internet", 
+                "আরো সংযোগ সেটিংস", "সংযোগসমূহ", "নেটওয়ার্ক ও ইন্টারনেট",
+                "VPN", "NFC", "Airplane mode", "এয়ারপ্লেন মোড"
+            };
+            int listHits = 0;
+            for (String indicator : listIndicators) {
+                List<AccessibilityNodeInfo> indHits = root.findAccessibilityNodeInfosByText(indicator);
+                if (indHits != null && !indHits.isEmpty()) {
+                    for (AccessibilityNodeInfo n : indHits) n.recycle();
+                    listHits++;
+                }
+            }
+            if (listHits >= 2) {
+                return false;
+            }
+
+            // Check for dialog/detail elements or keywords
+            boolean isDNSDetailScreen = !root.findAccessibilityNodeInfosByText("Select Private DNS Mode").isEmpty() ||
+                                         !root.findAccessibilityNodeInfosByText("Select private DNS mode").isEmpty() ||
+                                         !root.findAccessibilityNodeInfosByText("Private DNS provider hostname").isEmpty() ||
+                                         !root.findAccessibilityNodeInfosByText("Enter hostname").isEmpty() ||
+                                         !root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস প্রদানকারী").isEmpty() ||
+                                         !root.findAccessibilityNodeInfosByText("প্রাইভেট dns প্রদানকারী").isEmpty() ||
+                                         !root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস মোড").isEmpty() ||
+                                         !root.findAccessibilityNodeInfosByText("প্রাইভেট dns মোড").isEmpty() ||
+                                         hasEditText(root) ||
+                                         hasRadioButtonOrSwitch(root) ||
+                                         ((!root.findAccessibilityNodeInfosByText("Save").isEmpty() || 
+                                           !root.findAccessibilityNodeInfosByText("সংরক্ষণ").isEmpty() || 
+                                           !root.findAccessibilityNodeInfosByText("সেভ").isEmpty()) &&
+                                          (!root.findAccessibilityNodeInfosByText("Cancel").isEmpty() || 
+                                           !root.findAccessibilityNodeInfosByText("বাতিল").isEmpty()));
+
             if (isDNSDetailScreen) {
                 return true;
             }
