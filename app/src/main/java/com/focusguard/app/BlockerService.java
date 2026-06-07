@@ -93,6 +93,7 @@ public class BlockerService extends AccessibilityService {
         stopWhatsAppKillLoop();
         stopGoogleAssistantKillLoop();
         stopBlockerHeroKillLoop();
+        stopDnsKillLoop();
         destroyGhostShield();
         hideDnsTouchBlocker();
         instance = null;
@@ -122,6 +123,7 @@ public class BlockerService extends AccessibilityService {
 
         if (!prefManager.isPrivateDNSBlocked() || (!isSettingsPkg && !isSystemOrKeyboardPkg)) {
             hideDnsTouchBlocker();
+            stopDnsKillLoop();
         }
 
         // 0.00s Instant Google Assistant & Google App Blocker
@@ -161,6 +163,7 @@ public class BlockerService extends AccessibilityService {
             stopWhatsAppKillLoop();
             stopGoogleAssistantKillLoop();
             stopBlockerHeroKillLoop();
+            stopDnsKillLoop();
             isFromWebOptionVisible = false;
         }
 
@@ -871,9 +874,10 @@ public class BlockerService extends AccessibilityService {
                         if (isPrivateDNSSearchResult(source)) {
                             return;
                         }
-                        showInstantZeroFlashOverlay();
-                        performGlobalAction(GLOBAL_ACTION_BACK);
-                        mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
+                        doDnsBlock();
+                        if (!isDnsKillLoopActive) {
+                            startDnsKillLoop();
+                        }
                         return;
                     }
                 } finally {
@@ -886,9 +890,10 @@ public class BlockerService extends AccessibilityService {
                     if (isSearchResultBreadcrumb(text)) {
                         return;
                     }
-                    showInstantZeroFlashOverlay();
-                    performGlobalAction(GLOBAL_ACTION_BACK);
-                    mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
+                    doDnsBlock();
+                    if (!isDnsKillLoopActive) {
+                        startDnsKillLoop();
+                    }
                     return;
                 }
             }
@@ -910,9 +915,10 @@ public class BlockerService extends AccessibilityService {
                  eventTxt.contains("প্রাইভেট ডিএনএস") ||
                  eventTxt.contains("প্রাইভেট dns"))) {
                 
-                showInstantZeroFlashOverlay();
-                performGlobalAction(GLOBAL_ACTION_BACK);
-                mainHandler.postDelayed(this::dismissOverlayWithAnimation, 50);
+                doDnsBlock();
+                if (!isDnsKillLoopActive) {
+                    startDnsKillLoop();
+                }
                 return;
             }
 
@@ -921,9 +927,10 @@ public class BlockerService extends AccessibilityService {
             if (sourceNode != null) {
                 try {
                     if (isPrivateDNSScreen(sourceNode)) {
-                        showInstantZeroFlashOverlay();
-                        performGlobalAction(GLOBAL_ACTION_BACK);
-                        mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
+                        doDnsBlock();
+                        if (!isDnsKillLoopActive) {
+                            startDnsKillLoop();
+                        }
                         return;
                     }
                 } finally {
@@ -936,9 +943,10 @@ public class BlockerService extends AccessibilityService {
             if (rootInW != null) {
                 try {
                     if (isPrivateDNSScreen(rootInW)) {
-                        showInstantZeroFlashOverlay();
-                        performGlobalAction(GLOBAL_ACTION_BACK);
-                        mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
+                        doDnsBlock();
+                        if (!isDnsKillLoopActive) {
+                            startDnsKillLoop();
+                        }
                         return;
                     }
                 } finally {
@@ -959,9 +967,10 @@ public class BlockerService extends AccessibilityService {
                             if (windowRoot != null) {
                                 try {
                                     if (isPrivateDNSScreen(windowRoot)) {
-                                        showInstantZeroFlashOverlay();
-                                        performGlobalAction(GLOBAL_ACTION_BACK);
-                                        mainHandler.postDelayed(this::dismissOverlayWithAnimation, 100);
+                                        doDnsBlock();
+                                        if (!isDnsKillLoopActive) {
+                                            startDnsKillLoop();
+                                        }
                                         break;
                                     }
                                 } finally {
@@ -973,6 +982,88 @@ public class BlockerService extends AccessibilityService {
                 } catch (Exception ignored) {}
             }
         }
+    }
+
+    // =========================================================================
+    // PRIVATE DNS PROTECTION WATCHDOG LOOP
+    // =========================================================================
+    private boolean isDnsKillLoopActive = false;
+    private long dnsKillLoopStartTime = 0;
+    private boolean hasBlockedCurrentDns = false;
+
+    private final Runnable dnsKillRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isDnsKillLoopActive) return;
+
+            boolean isDnsActive = false;
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    if (isPrivateDNSScreen(root)) {
+                        isDnsActive = true;
+                        doDnsBlock();
+                    }
+                } finally {
+                    root.recycle();
+                }
+            } else {
+                // Keep overlay active during window state changes / loading transitions
+                isDnsActive = true;
+            }
+
+            long elapsed = System.currentTimeMillis() - dnsKillLoopStartTime;
+
+            // Stop loop and dismiss overlay if the screen is gone AND we either:
+            // 1. Successfully blocked it (hasBlockedCurrentDns == true), OR
+            // 2. We've reached the 1.0 second timeout (no dialog appeared, e.g. click was successfully blocked).
+            if (!isDnsActive && (hasBlockedCurrentDns || elapsed > 1000)) {
+                dismissOverlayWithAnimation();
+                isDnsKillLoopActive = false;
+                return;
+            }
+
+            if (isDnsKillLoopActive) {
+                if (elapsed < 1500) {
+                    long delay = (elapsed < 600) ? 5L : 50L;
+                    mainHandler.postDelayed(this, delay);
+                } else {
+                    dismissOverlayWithAnimation();
+                    isDnsKillLoopActive = false;
+                }
+            }
+        }
+    };
+
+    private void startDnsKillLoop() {
+        isDnsKillLoopActive = true;
+        dnsKillLoopStartTime = System.currentTimeMillis();
+        hasBlockedCurrentDns = false;
+
+        mainHandler.removeCallbacks(dnsKillRunnable);
+        dnsKillRunnable.run();
+
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (isDnsKillLoopActive) {
+                    isDnsKillLoopActive = false;
+                    dismissOverlayWithAnimation();
+                }
+            }
+        }, 1500);
+    }
+
+    private void stopDnsKillLoop() {
+        isDnsKillLoopActive = false;
+        mainHandler.removeCallbacks(dnsKillRunnable);
+        dismissOverlayWithAnimation();
+    }
+
+    private void doDnsBlock() {
+        hasBlockedCurrentDns = true;
+        showInstantZeroFlashOverlay();
+        performGlobalAction(GLOBAL_ACTION_BACK);
     }
 
     private void triggerKickOut() {
