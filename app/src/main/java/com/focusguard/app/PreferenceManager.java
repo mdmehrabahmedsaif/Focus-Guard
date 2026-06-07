@@ -18,6 +18,7 @@ public class PreferenceManager {
     private static final String KEY_BLOCK_UNINSTALL = "block_uninstall";
     private static final String KEY_BLOCK_PRIVATE_DNS = "block_private_dns";
     private static final String KEY_BLOCK_BLOCKER_HERO = "block_blocker_hero";
+    private static final String KEY_BLOCK_BLOCKER_HERO_ACCESSIBILITY = "block_blocker_hero_acc";
     private static final String KEY_EMERGENCY_PASSWORD = "emergency_password";
     private static final String KEY_TIMER_END_TIME = "timer_end_time";
 
@@ -113,6 +114,14 @@ public class PreferenceManager {
 
     public boolean isBlockerHeroBlocked() {
         return prefs.getBoolean(KEY_BLOCK_BLOCKER_HERO, false);
+    }
+
+    public void setBlockerHeroAccessibilityBlocked(boolean blocked) {
+        prefs.edit().putBoolean(KEY_BLOCK_BLOCKER_HERO_ACCESSIBILITY, blocked).apply();
+    }
+
+    public boolean isBlockerHeroAccessibilityBlocked() {
+        return prefs.getBoolean(KEY_BLOCK_BLOCKER_HERO_ACCESSIBILITY, false);
     }
 
     public void setEmergencyPassword(String password) {

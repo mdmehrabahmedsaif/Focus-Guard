@@ -30,6 +30,11 @@
             android:noHistory="true"
             android:exported="false" />
 
+        <activity
+            android:name=".AccessibilityBlockerActivity"
+            android:theme="@style/Theme.FocusGuard"
+            android:exported="false" />
+
         <!-- Accessibility Service for blocking -->
         <service
             android:name=".BlockerService"

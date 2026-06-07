@@ -173,6 +173,14 @@ public class MainActivity extends AppCompatActivity {
             pref.setDeviceAdminProtected(checked);
         });
 
+        // --- Open Accessibility Blocker page ---
+        View btnOpenAccessibilityBlocker = findViewById(R.id.btnOpenAccessibilityBlocker);
+        if (btnOpenAccessibilityBlocker != null) {
+            btnOpenAccessibilityBlocker.setOnClickListener(v -> {
+                startActivity(new Intent(this, AccessibilityBlockerActivity.class));
+            });
+        }
+
         // --- Save Password ---
         btnSavePassword.setOnClickListener(v -> {
             if (etPassword == null) return;

@@ -94,6 +94,7 @@ public class BlockerService extends AccessibilityService {
         stopGoogleAssistantKillLoop();
         stopBlockerHeroKillLoop();
         stopDnsKillLoop();
+        stopBlockerHeroAccKillLoop();
         destroyGhostShield();
         hideDnsTouchBlocker();
         instance = null;
@@ -124,6 +125,10 @@ public class BlockerService extends AccessibilityService {
         if (!prefManager.isPrivateDNSBlocked() || (!isSettingsPkg && !isSystemOrKeyboardPkg)) {
             hideDnsTouchBlocker();
             stopDnsKillLoop();
+        }
+
+        if (!prefManager.isBlockerHeroAccessibilityBlocked() || (!isSettingsPkg && !isSystemOrKeyboardPkg)) {
+            stopBlockerHeroAccKillLoop();
         }
 
         // 0.00s Instant Google Assistant & Google App Blocker
@@ -164,6 +169,7 @@ public class BlockerService extends AccessibilityService {
             stopGoogleAssistantKillLoop();
             stopBlockerHeroKillLoop();
             stopDnsKillLoop();
+            stopBlockerHeroAccKillLoop();
             isFromWebOptionVisible = false;
         }
 
@@ -219,6 +225,10 @@ public class BlockerService extends AccessibilityService {
                 // Check Private DNS Protection
                 if (prefManager.isPrivateDNSBlocked() && (isSettingsPkg || isSystemPkg)) {
                     handlePrivateDNSProtection(event, eventType);
+                }
+                // Check BlockerHero Accessibility Protection
+                if (prefManager.isBlockerHeroAccessibilityBlocked() && (isSettingsPkg || isSystemPkg)) {
+                    handleBlockerHeroAccessibilityProtection(event, eventType, pkgName);
                 }
             }
         }
@@ -1039,6 +1049,226 @@ public class BlockerService extends AccessibilityService {
         hasBlockedCurrentDns = true;
         showInstantZeroFlashOverlay();
         performGlobalAction(GLOBAL_ACTION_BACK);
+    }
+
+    // =========================================================================
+    // BLOCKER HERO ACCESSIBILITY PROTECTION
+    // =========================================================================
+    private boolean isBlockerHeroAccKillLoopActive = false;
+    private long blockerHeroAccKillLoopStartTime = 0;
+    private boolean hasBlockedCurrentBlockerHeroAcc = false;
+
+    private boolean isBlockerHeroAccScreen(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        
+        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("BlockerHero");
+        if (hits == null || hits.isEmpty()) {
+            hits = root.findAccessibilityNodeInfosByText("Blocker Hero");
+        }
+        if (hits == null || hits.isEmpty()) {
+            hits = root.findAccessibilityNodeInfosByText("ব্লকার হিরো");
+        }
+        
+        if (hits != null && !hits.isEmpty()) {
+            for (AccessibilityNodeInfo n : hits) n.recycle();
+            
+            boolean isAccContext = !root.findAccessibilityNodeInfosByText("shortcut").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("Shortcut").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("accessibility").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("capabilities").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("BlockerHero shortcut").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("শর্টকাট").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("এক্সেসিবিলিটি").isEmpty();
+                                  
+            return isAccContext;
+        }
+        return false;
+    }
+
+    private boolean isBlockerHeroAccScreenInAnyWindow(AccessibilityNodeInfo eventSource) {
+        if (eventSource != null && isBlockerHeroAccScreen(eventSource)) {
+            return true;
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+                if (windows != null) {
+                    for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+                        if (window == null) continue;
+                        AccessibilityNodeInfo windowRoot = window.getRoot();
+                        if (windowRoot != null) {
+                            try {
+                                if (isBlockerHeroAccScreen(windowRoot)) {
+                                    return true;
+                                }
+                            } finally {
+                                windowRoot.recycle();
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
+        if (activeRoot != null) {
+            try {
+                if (isBlockerHeroAccScreen(activeRoot)) {
+                    return true;
+                }
+            } finally {
+                activeRoot.recycle();
+            }
+        }
+        return false;
+    }
+
+    private final Runnable blockerHeroAccKillRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isBlockerHeroAccKillLoopActive) return;
+
+            boolean isHeroAccActive = isBlockerHeroAccScreenInAnyWindow(null);
+
+            long elapsed = System.currentTimeMillis() - blockerHeroAccKillLoopStartTime;
+
+            // Stop loop if gone AND we either:
+            // 1. Blocked it successfully, OR
+            // 2. 1.0 second timeout has passed
+            if (!isHeroAccActive && (hasBlockedCurrentBlockerHeroAcc || elapsed > 1000)) {
+                dismissOverlayWithAnimation();
+                isBlockerHeroAccKillLoopActive = false;
+                return;
+            }
+
+            if (isBlockerHeroAccKillLoopActive) {
+                if (elapsed < 1500) {
+                    long delay = (elapsed < 600) ? 5L : 50L;
+                    mainHandler.postDelayed(this, delay);
+                } else {
+                    dismissOverlayWithAnimation();
+                    isBlockerHeroAccKillLoopActive = false;
+                }
+            }
+        }
+    };
+
+    private void startBlockerHeroAccKillLoop() {
+        isBlockerHeroAccKillLoopActive = true;
+        blockerHeroAccKillLoopStartTime = System.currentTimeMillis();
+        hasBlockedCurrentBlockerHeroAcc = false;
+
+        mainHandler.removeCallbacks(blockerHeroAccKillRunnable);
+        blockerHeroAccKillRunnable.run();
+
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (isBlockerHeroAccKillLoopActive) {
+                    isBlockerHeroAccKillLoopActive = false;
+                    dismissOverlayWithAnimation();
+                }
+            }
+        }, 1500);
+    }
+
+    private void stopBlockerHeroAccKillLoop() {
+        isBlockerHeroAccKillLoopActive = false;
+        mainHandler.removeCallbacks(blockerHeroAccKillRunnable);
+        dismissOverlayWithAnimation();
+    }
+
+    private void doBlockerHeroAccBlock() {
+        hasBlockedCurrentBlockerHeroAcc = true;
+        showInstantZeroFlashOverlay();
+        performGlobalAction(GLOBAL_ACTION_BACK);
+    }
+
+    private boolean isBlockerHeroAccessibilityNode(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        
+        CharSequence txt = node.getText();
+        if (txt != null) {
+            String s = txt.toString().toLowerCase();
+            if (s.contains("blockerhero") || s.contains("blocker hero") || s.contains("ব্লকার হিরো")) {
+                return true;
+            }
+        }
+        
+        CharSequence desc = node.getContentDescription();
+        if (desc != null) {
+            String s = desc.toString().toLowerCase();
+            if (s.contains("blockerhero") || s.contains("blocker hero") || s.contains("ব্লকার হিরো")) {
+                return true;
+            }
+        }
+        
+        return isBlockerHeroAccessibilityInChildren(node, 0);
+    }
+
+    private boolean isBlockerHeroAccessibilityInChildren(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth >= 3) return false;
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                CharSequence ctxt = child.getText();
+                if (ctxt != null) {
+                    String s = ctxt.toString().toLowerCase();
+                    if (s.contains("blockerhero") || s.contains("blocker hero") || s.contains("ব্লকার হিরো")) {
+                        child.recycle();
+                        return true;
+                    }
+                }
+                CharSequence cdesc = child.getContentDescription();
+                if (cdesc != null) {
+                    String s = cdesc.toString().toLowerCase();
+                    if (s.contains("blockerhero") || s.contains("blocker hero") || s.contains("ব্লকার হিরো")) {
+                        child.recycle();
+                        return true;
+                    }
+                }
+                if (isBlockerHeroAccessibilityInChildren(child, depth + 1)) {
+                    child.recycle();
+                    return true;
+                }
+                child.recycle();
+            }
+        }
+        return false;
+    }
+
+    private void handleBlockerHeroAccessibilityProtection(AccessibilityEvent event, int eventType, String pkgName) {
+        boolean isSettings = pkgName.contains("settings");
+
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                try {
+                    if (isBlockerHeroAccessibilityNode(source)) {
+                        doBlockerHeroAccBlock();
+                        if (!isBlockerHeroAccKillLoopActive) {
+                            startBlockerHeroAccKillLoop();
+                        }
+                        return;
+                    }
+                } finally {
+                    source.recycle();
+                }
+            }
+        }
+
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+           (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isSettings)) {
+            
+            AccessibilityNodeInfo sourceNode = event.getSource();
+            if (isBlockerHeroAccScreenInAnyWindow(sourceNode)) {
+                doBlockerHeroAccBlock();
+                if (!isBlockerHeroAccKillLoopActive) {
+                    startBlockerHeroAccKillLoop();
+                }
+            }
+        }
     }
 
     private void triggerKickOut() {
