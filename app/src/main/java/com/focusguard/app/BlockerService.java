@@ -97,6 +97,7 @@ public class BlockerService extends AccessibilityService {
         stopBlockerHeroAccKillLoop();
         destroyGhostShield();
         hideDnsTouchBlocker();
+        hideBlockerHeroTouchBlocker();
         instance = null;
         return super.onUnbind(intent);
     }
@@ -128,6 +129,7 @@ public class BlockerService extends AccessibilityService {
         }
 
         if (!prefManager.isBlockerHeroAccessibilityBlocked() || (!isSettingsPkg && !isSystemOrKeyboardPkg)) {
+            hideBlockerHeroTouchBlocker();
             stopBlockerHeroAccKillLoop();
         }
 
@@ -587,7 +589,7 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isPrivateDNSInChildren(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth >= 3) return false;
+        if (node == null || depth >= 5) return false;
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
@@ -615,6 +617,40 @@ public class BlockerService extends AccessibilityService {
         return false;
     }
 
+    private boolean hasEditText(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        CharSequence cls = node.getClassName();
+        if (cls != null && cls.toString().contains("EditText")) {
+            return true;
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (hasEditText(child)) {
+                if (child != null) child.recycle();
+                return true;
+            }
+            if (child != null) child.recycle();
+        }
+        return false;
+    }
+
+    private boolean hasRadioButtonOrSwitch(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        CharSequence cls = node.getClassName();
+        if (cls != null && (cls.toString().contains("RadioButton") || cls.toString().contains("Switch") || cls.toString().contains("ToggleButton"))) {
+            return true;
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (hasRadioButtonOrSwitch(child)) {
+                if (child != null) child.recycle();
+                return true;
+            }
+            if (child != null) child.recycle();
+        }
+        return false;
+    }
+
     private boolean isPrivateDNSScreen(AccessibilityNodeInfo root) {
         if (root == null) return false;
 
@@ -628,19 +664,6 @@ public class BlockerService extends AccessibilityService {
         }
 
         if (hits != null && !hits.isEmpty()) {
-            boolean isDNSDetailScreen = !root.findAccessibilityNodeInfosByText("Select Private DNS Mode").isEmpty() ||
-                                        !root.findAccessibilityNodeInfosByText("Select private DNS mode").isEmpty() ||
-                                        !root.findAccessibilityNodeInfosByText("Private DNS provider hostname").isEmpty() ||
-                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস প্রদানকারী").isEmpty() ||
-                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট dns প্রদানকারী").isEmpty() ||
-                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট ডিএনএস মোড").isEmpty() ||
-                                        !root.findAccessibilityNodeInfosByText("প্রাইভেট dns মোড").isEmpty() ||
-                                        ((!root.findAccessibilityNodeInfosByText("Save").isEmpty() || 
-                                          !root.findAccessibilityNodeInfosByText("সংরক্ষণ").isEmpty() || 
-                                          !root.findAccessibilityNodeInfosByText("সেভ").isEmpty()) &&
-                                         (!root.findAccessibilityNodeInfosByText("Cancel").isEmpty() || 
-                                          !root.findAccessibilityNodeInfosByText("বাতিল").isEmpty()));
-
             for (AccessibilityNodeInfo n : hits) n.recycle();
 
             if (isDNSDetailScreen) {
@@ -719,6 +742,109 @@ public class BlockerService extends AccessibilityService {
 
     private View dnsTouchBlocker = null;
     private WindowManager.LayoutParams dnsTouchBlockerParams = null;
+
+    private View blockerHeroTouchBlocker = null;
+    private WindowManager.LayoutParams blockerHeroTouchBlockerParams = null;
+
+    private void showBlockerHeroTouchBlocker(Rect rect) {
+        Runnable r = () -> {
+            try {
+                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                if (wm == null) return;
+
+                if (blockerHeroTouchBlocker == null) {
+                    blockerHeroTouchBlocker = new View(BlockerService.this);
+                    blockerHeroTouchBlocker.setBackgroundColor(Color.TRANSPARENT);
+                    blockerHeroTouchBlocker.setOnTouchListener((v, event) -> true);
+
+                    blockerHeroTouchBlockerParams = new WindowManager.LayoutParams(
+                        rect.width(),
+                        rect.height(),
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        PixelFormat.TRANSLUCENT
+                    );
+                    blockerHeroTouchBlockerParams.gravity = Gravity.LEFT | Gravity.TOP;
+                    blockerHeroTouchBlockerParams.x = rect.left;
+                    blockerHeroTouchBlockerParams.y = rect.top;
+
+                    wm.addView(blockerHeroTouchBlocker, blockerHeroTouchBlockerParams);
+                } else {
+                    if (blockerHeroTouchBlockerParams.x != rect.left || 
+                        blockerHeroTouchBlockerParams.y != rect.top || 
+                        blockerHeroTouchBlockerParams.width != rect.width() || 
+                        blockerHeroTouchBlockerParams.height != rect.height()) {
+                        
+                        blockerHeroTouchBlockerParams.width = rect.width();
+                        blockerHeroTouchBlockerParams.height = rect.height();
+                        blockerHeroTouchBlockerParams.x = rect.left;
+                        blockerHeroTouchBlockerParams.y = rect.top;
+                        wm.updateViewLayout(blockerHeroTouchBlocker, blockerHeroTouchBlockerParams);
+                    }
+                }
+            } catch (Exception ignored) {}
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
+    }
+
+    private void hideBlockerHeroTouchBlocker() {
+        Runnable r = () -> {
+            if (blockerHeroTouchBlocker != null) {
+                try {
+                    WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                    if (wm != null) {
+                        wm.removeView(blockerHeroTouchBlocker);
+                    }
+                } catch (Exception ignored) {}
+                blockerHeroTouchBlocker = null;
+                blockerHeroTouchBlockerParams = null;
+            }
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
+    }
+
+    private AccessibilityNodeInfo findBlockerHeroAccListItem(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+        
+        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("BlockerHero");
+        if (hits == null || hits.isEmpty()) {
+            hits = root.findAccessibilityNodeInfosByText("Blocker Hero");
+        }
+        if (hits == null || hits.isEmpty()) {
+            hits = root.findAccessibilityNodeInfosByText("ব্লকার হিরো");
+        }
+        
+        if (hits != null) {
+            for (AccessibilityNodeInfo hit : hits) {
+                if (hit == null) continue;
+                
+                if (isEditableNode(hit)) {
+                    hit.recycle();
+                    continue;
+                }
+                
+                AccessibilityNodeInfo clickableAncestor = findClickableAncestor(hit);
+                hit.recycle();
+                
+                if (clickableAncestor != null) {
+                    return clickableAncestor;
+                }
+            }
+        }
+        return null;
+    }
 
     private void showDnsTouchBlocker(Rect rect) {
         Runnable r = () -> {
@@ -876,6 +1002,40 @@ public class BlockerService extends AccessibilityService {
         }
 
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            // FAST PATH 1: Check event text directly (zero IPC, zero allocation)
+            List<CharSequence> eventTexts = event.getText();
+            if (eventTexts != null) {
+                for (CharSequence t : eventTexts) {
+                    if (t != null) {
+                        String s = t.toString().toLowerCase();
+                        if (isPrivateDNSText(s)) {
+                            if (!isSearchResultBreadcrumb(s)) {
+                                doDnsBlock();
+                                if (!isDnsKillLoopActive) {
+                                    startDnsKillLoop();
+                                }
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // FAST PATH 2: Check event content description
+            CharSequence evtDesc = event.getContentDescription();
+            if (evtDesc != null) {
+                String d = evtDesc.toString().toLowerCase();
+                if (isPrivateDNSText(d)) {
+                    if (!isSearchResultBreadcrumb(d)) {
+                        doDnsBlock();
+                        if (!isDnsKillLoopActive) {
+                            startDnsKillLoop();
+                        }
+                        return;
+                    }
+                }
+            }
+
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
                 try {
@@ -918,7 +1078,7 @@ public class BlockerService extends AccessibilityService {
             
             // Speed up window state dialog auto-dismissal using local event texts
             String eventTxt = getEventText(event).toLowerCase();
-            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            if ((eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) &&
                 (eventTxt.contains("select private dns mode") || 
                  eventTxt.contains("select private dns") ||
                  eventTxt.contains("private dns provider hostname") ||
@@ -996,13 +1156,14 @@ public class BlockerService extends AccessibilityService {
             if (!isDnsKillLoopActive) return;
 
             boolean isDnsActive = isPrivateDNSScreenInAnyWindow(null);
+            if (isDnsActive) {
+                doDnsBlock();
+            }
 
             long elapsed = System.currentTimeMillis() - dnsKillLoopStartTime;
 
-            // Stop loop and dismiss overlay if the screen is gone AND we either:
-            // 1. Successfully blocked it (hasBlockedCurrentDns == true), OR
-            // 2. We've reached the 1.0 second timeout (no dialog appeared, e.g. click was successfully blocked).
-            if (!isDnsActive && (hasBlockedCurrentDns || elapsed > 1000)) {
+            // Keep scanning for at least 1000ms before allowing loop to stop.
+            if (!isDnsActive && elapsed > 1000) {
                 dismissOverlayWithAnimation();
                 isDnsKillLoopActive = false;
                 return;
@@ -1010,7 +1171,7 @@ public class BlockerService extends AccessibilityService {
 
             if (isDnsKillLoopActive) {
                 if (elapsed < 1500) {
-                    long delay = (elapsed < 600) ? 5L : 50L;
+                    long delay = (elapsed < 500) ? 5L : 30L;
                     mainHandler.postDelayed(this, delay);
                 } else {
                     dismissOverlayWithAnimation();
@@ -1060,7 +1221,20 @@ public class BlockerService extends AccessibilityService {
 
     private boolean isBlockerHeroAccScreen(AccessibilityNodeInfo root) {
         if (root == null) return false;
-        
+
+        // Check if we see "Installed apps" or main Accessibility lists to avoid blocking the list itself
+        String[] ignoreTitles = {
+            "Accessibility", "Downloaded services", "এক্সেসিবিলিটি", "ডাউনলোড করা পরিষেবা",
+            "Installed apps", "Installed services", "ইনস্টল করা অ্যাপ",
+            "App info", "অ্যাপ তথ্য", "Permissions", "Storage"
+        };
+        for (String title : ignoreTitles) {
+            if (!root.findAccessibilityNodeInfosByText(title).isEmpty()) {
+                return false;
+            }
+        }
+
+        // Must contain BlockerHero name
         List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText("BlockerHero");
         if (hits == null || hits.isEmpty()) {
             hits = root.findAccessibilityNodeInfosByText("Blocker Hero");
@@ -1068,20 +1242,26 @@ public class BlockerService extends AccessibilityService {
         if (hits == null || hits.isEmpty()) {
             hits = root.findAccessibilityNodeInfosByText("ব্লকার হিরো");
         }
-        
+
         if (hits != null && !hits.isEmpty()) {
             for (AccessibilityNodeInfo n : hits) n.recycle();
             
+            // Check accessibility context keywords (case-insensitive checks on the tree)
             boolean isAccContext = !root.findAccessibilityNodeInfosByText("shortcut").isEmpty() ||
                                   !root.findAccessibilityNodeInfosByText("Shortcut").isEmpty() ||
                                   !root.findAccessibilityNodeInfosByText("accessibility").isEmpty() ||
                                   !root.findAccessibilityNodeInfosByText("capabilities").isEmpty() ||
-                                  !root.findAccessibilityNodeInfosByText("BlockerHero shortcut").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("does not collect").isEmpty() ||
                                   !root.findAccessibilityNodeInfosByText("শর্টকাট").isEmpty() ||
-                                  !root.findAccessibilityNodeInfosByText("এক্সেসিবিলিটি").isEmpty();
+                                  !root.findAccessibilityNodeInfosByText("এক্সেসিবিলিটি").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("Use BlockerHero").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("Use Blocker Hero").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("BlockerHero shortcut").isEmpty() ||
+                                  !root.findAccessibilityNodeInfosByText("Blocker Hero shortcut").isEmpty();
                                   
             return isAccContext;
         }
+
         return false;
     }
 
@@ -1130,13 +1310,14 @@ public class BlockerService extends AccessibilityService {
             if (!isBlockerHeroAccKillLoopActive) return;
 
             boolean isHeroAccActive = isBlockerHeroAccScreenInAnyWindow(null);
+            if (isHeroAccActive) {
+                doBlockerHeroAccBlock();
+            }
 
             long elapsed = System.currentTimeMillis() - blockerHeroAccKillLoopStartTime;
 
-            // Stop loop if gone AND we either:
-            // 1. Blocked it successfully, OR
-            // 2. 1.0 second timeout has passed
-            if (!isHeroAccActive && (hasBlockedCurrentBlockerHeroAcc || elapsed > 1000)) {
+            // Keep scanning for at least 1000ms before allowing loop to stop.
+            if (!isHeroAccActive && elapsed > 1000) {
                 dismissOverlayWithAnimation();
                 isBlockerHeroAccKillLoopActive = false;
                 return;
@@ -1144,7 +1325,7 @@ public class BlockerService extends AccessibilityService {
 
             if (isBlockerHeroAccKillLoopActive) {
                 if (elapsed < 1500) {
-                    long delay = (elapsed < 600) ? 5L : 50L;
+                    long delay = (elapsed < 500) ? 5L : 30L;
                     mainHandler.postDelayed(this, delay);
                 } else {
                     dismissOverlayWithAnimation();
@@ -1208,7 +1389,7 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isBlockerHeroAccessibilityInChildren(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth >= 3) return false;
+        if (node == null || depth >= 5) return false;
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
@@ -1241,7 +1422,68 @@ public class BlockerService extends AccessibilityService {
     private void handleBlockerHeroAccessibilityProtection(AccessibilityEvent event, int eventType, String pkgName) {
         boolean isSettings = pkgName.contains("settings");
 
+        // Manage Touch Blocker Overlay dynamically on window content/state changes
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null) {
+            try {
+                AccessibilityNodeInfo blockerHeroItem = findBlockerHeroAccListItem(root);
+                if (blockerHeroItem != null) {
+                    Rect rect = new Rect();
+                    blockerHeroItem.getBoundsInScreen(rect);
+                    blockerHeroItem.recycle();
+                    showBlockerHeroTouchBlocker(rect);
+                } else {
+                    // Prevent hiding the touch blocker if we are currently on the Blocker Hero detail screen
+                    // or in system/keyboard packages. This keeps the blocker active during launches.
+                    CharSequence activePkg = root.getPackageName();
+                    String activePkgStr = activePkg != null ? activePkg.toString().toLowerCase() : "";
+                    boolean isSystemOrKeyboardActive = "android".equals(activePkgStr) || 
+                                                       "com.android.systemui".equals(activePkgStr) || 
+                                                       activePkgStr.contains("inputmethod") || 
+                                                       activePkgStr.contains("keyboard") || 
+                                                       activePkgStr.contains("ime");
+                    
+                    if (!isSystemOrKeyboardActive && !isBlockerHeroAccScreenInAnyWindow(null)) {
+                        hideBlockerHeroTouchBlocker();
+                    }
+                }
+            } finally {
+                root.recycle();
+            }
+        }
+
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            // FAST PATH 1: Check event text directly (zero IPC, zero allocation)
+            List<CharSequence> eventTexts = event.getText();
+            if (eventTexts != null) {
+                for (CharSequence t : eventTexts) {
+                    if (t != null) {
+                        String s = t.toString().toLowerCase();
+                        if (s.contains("blockerhero") || s.contains("blocker hero") || s.contains("ব্লকার হিরো")) {
+                            doBlockerHeroAccBlock();
+                            if (!isBlockerHeroAccKillLoopActive) {
+                                startBlockerHeroAccKillLoop();
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // FAST PATH 2: Check event content description
+            CharSequence evtDesc = event.getContentDescription();
+            if (evtDesc != null) {
+                String d = evtDesc.toString().toLowerCase();
+                if (d.contains("blockerhero") || d.contains("blocker hero") || d.contains("ব্লকার হিরো")) {
+                    doBlockerHeroAccBlock();
+                    if (!isBlockerHeroAccKillLoopActive) {
+                        startBlockerHeroAccKillLoop();
+                    }
+                    return;
+                }
+            }
+
+            // FALLBACK: Check source node tree
             AccessibilityNodeInfo source = event.getSource();
             if (source != null) {
                 try {
@@ -1261,6 +1503,18 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
            (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isSettings)) {
             
+            // Speed up window state dialog auto-dismissal using event text (very fast)
+            String eventTxt = getEventText(event).toLowerCase();
+            if (eventTxt.contains("blockerhero") || eventTxt.contains("blocker hero") || eventTxt.contains("ব্লকার হিরো")) {
+                if (eventTxt.contains("shortcut") || eventTxt.contains("uses accessibility") || eventTxt.contains("capabilities") || eventTxt.contains("শর্টকাট")) {
+                    doBlockerHeroAccBlock();
+                    if (!isBlockerHeroAccKillLoopActive) {
+                        startBlockerHeroAccKillLoop();
+                    }
+                    return;
+                }
+            }
+
             AccessibilityNodeInfo sourceNode = event.getSource();
             if (isBlockerHeroAccScreenInAnyWindow(sourceNode)) {
                 doBlockerHeroAccBlock();
