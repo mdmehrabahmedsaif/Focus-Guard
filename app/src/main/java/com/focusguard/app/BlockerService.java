@@ -100,6 +100,7 @@ public class BlockerService extends AccessibilityService {
         destroyGhostShield();
         hideDnsTouchBlocker();
         hideBlockerHeroTouchBlocker();
+        hideDocsTouchBlocker();
         instance = null;
         return super.onUnbind(intent);
     }
@@ -165,6 +166,7 @@ public class BlockerService extends AccessibilityService {
             stopBlockerHeroKillLoop();
             stopDnsKillLoop();
             stopBlockerHeroAccKillLoop();
+            hideDocsTouchBlocker();
             isFromWebOptionVisible = false;
         }
 
@@ -758,6 +760,9 @@ public class BlockerService extends AccessibilityService {
     private View blockerHeroTouchBlocker = null;
     private WindowManager.LayoutParams blockerHeroTouchBlockerParams = null;
 
+    private View docsTouchBlocker = null;
+    private WindowManager.LayoutParams docsTouchBlockerParams = null;
+
     private void showBlockerHeroTouchBlocker(Rect rect) {
         Runnable r = () -> {
             try {
@@ -825,6 +830,97 @@ public class BlockerService extends AccessibilityService {
         } else {
             mainHandler.post(r);
         }
+    }
+
+    private void showDocsTouchBlocker(Rect rect) {
+        Runnable r = () -> {
+            try {
+                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                if (wm == null) return;
+
+                if (docsTouchBlocker == null) {
+                    docsTouchBlocker = new View(BlockerService.this);
+                    docsTouchBlocker.setBackgroundColor(Color.TRANSPARENT);
+                    docsTouchBlocker.setOnTouchListener((v, event) -> true);
+
+                    docsTouchBlockerParams = new WindowManager.LayoutParams(
+                        rect.width(),
+                        rect.height(),
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        PixelFormat.TRANSLUCENT
+                    );
+                    docsTouchBlockerParams.gravity = Gravity.LEFT | Gravity.TOP;
+                    docsTouchBlockerParams.x = rect.left;
+                    docsTouchBlockerParams.y = rect.top;
+
+                    wm.addView(docsTouchBlocker, docsTouchBlockerParams);
+                } else {
+                    if (docsTouchBlockerParams.x != rect.left || 
+                        docsTouchBlockerParams.y != rect.top || 
+                        docsTouchBlockerParams.width != rect.width() || 
+                        docsTouchBlockerParams.height != rect.height()) {
+                        
+                        docsTouchBlockerParams.width = rect.width();
+                        docsTouchBlockerParams.height = rect.height();
+                        docsTouchBlockerParams.x = rect.left;
+                        docsTouchBlockerParams.y = rect.top;
+                        wm.updateViewLayout(docsTouchBlocker, docsTouchBlockerParams);
+                    }
+                }
+            } catch (Exception ignored) {}
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
+    }
+
+    private void hideDocsTouchBlocker() {
+        Runnable r = () -> {
+            if (docsTouchBlocker != null) {
+                try {
+                    WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                    if (wm != null) {
+                        wm.removeView(docsTouchBlocker);
+                    }
+                } catch (Exception ignored) {}
+                docsTouchBlocker = null;
+                docsTouchBlockerParams = null;
+            }
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
+    }
+
+    private AccessibilityNodeInfo findFromWebListItem(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+        String[] webTerms = {
+            "from web", "ওয়েব থেকে", "ওয়েব থেকে", "ওয়েব হতে", "ওয়েব হতে", "वेब से", 
+            "desde la web", "de la web", "da web"
+        };
+        for (String term : webTerms) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(term);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo hit : hits) {
+                    if (hit == null) continue;
+                    AccessibilityNodeInfo clickableAncestor = findClickableAncestor(hit);
+                    hit.recycle();
+                    if (clickableAncestor != null) {
+                        return clickableAncestor;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private AccessibilityNodeInfo findBlockerHeroAccListItem(AccessibilityNodeInfo root) {
@@ -2258,6 +2354,34 @@ public class BlockerService extends AccessibilityService {
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType, String pkgName) {
+        // Manage Touch Blocker Overlay dynamically on window content/state changes
+        if (isGoogleDocsPackage(pkgName)) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    try {
+                        if (isInsertImageMenuOpen(root)) {
+                            AccessibilityNodeInfo fromWebNode = findFromWebListItem(root);
+                            if (fromWebNode != null) {
+                                Rect rect = new Rect();
+                                fromWebNode.getBoundsInScreen(rect);
+                                fromWebNode.recycle();
+                                showDocsTouchBlocker(rect);
+                            } else {
+                                hideDocsTouchBlocker();
+                            }
+                        } else {
+                            hideDocsTouchBlocker();
+                        }
+                    } finally {
+                        root.recycle();
+                    }
+                }
+            }
+        }
+
         // Pure event-driven flow: no touch shield updates to eliminate typing lag entirely!
 
         // Ignore text selection popup toolbar events to allow copy/paste/select-all
