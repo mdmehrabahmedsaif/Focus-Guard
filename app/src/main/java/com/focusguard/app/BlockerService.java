@@ -65,6 +65,7 @@ public class BlockerService extends AccessibilityService {
     public boolean onUnbind(Intent intent) {
         dismissOverlayWithAnimation();
         stopBrowserKillLoop();
+        stopMenuWatchdog();
         destroyGhostShield();
         hideDocsTouchBlocker();
         instance = null;
@@ -103,7 +104,11 @@ public class BlockerService extends AccessibilityService {
             
             dismissOverlayWithAnimation();
             stopBrowserKillLoop();
-            hideDocsTouchBlocker();
+            // Only remove touch blocker on actual app switch, not background events
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                hideDocsTouchBlocker();
+                stopMenuWatchdog();
+            }
             isFromWebOptionVisible = false;
         }
 
@@ -307,21 +312,29 @@ public class BlockerService extends AccessibilityService {
 
     private View docsTouchBlocker = null;
     private WindowManager.LayoutParams docsTouchBlockerParams = null;
+    private static final int TOUCH_BLOCKER_V_PAD = 120;
 
-    private void showDocsTouchBlocker(Rect rect) {
+    private void showDocsTouchBlocker(Rect buttonRect) {
+        // Full-width strip covering the "From web" row with generous vertical padding
+        // This ensures the button CANNOT be tapped even if bounds are slightly off
+        final int stripTop = Math.max(0, buttonRect.top - TOUCH_BLOCKER_V_PAD);
+        final int stripHeight = buttonRect.height() + (TOUCH_BLOCKER_V_PAD * 2);
         Runnable r = () -> {
             try {
                 WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
                 if (wm == null) return;
+                android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+                int screenWidth = dm.widthPixels;
 
                 if (docsTouchBlocker == null) {
                     docsTouchBlocker = new View(BlockerService.this);
-                    docsTouchBlocker.setBackgroundColor(Color.TRANSPARENT);
+                    // Semi-transparent dark overlay as visual indicator that option is blocked
+                    docsTouchBlocker.setBackgroundColor(Color.argb(160, 18, 18, 28));
                     docsTouchBlocker.setOnTouchListener((v, event1) -> true);
 
                     docsTouchBlockerParams = new WindowManager.LayoutParams(
-                        rect.width(),
-                        rect.height(),
+                        screenWidth,
+                        stripHeight,
                         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
@@ -329,20 +342,19 @@ public class BlockerService extends AccessibilityService {
                         PixelFormat.TRANSLUCENT
                     );
                     docsTouchBlockerParams.gravity = Gravity.LEFT | Gravity.TOP;
-                    docsTouchBlockerParams.x = rect.left;
-                    docsTouchBlockerParams.y = rect.top;
+                    docsTouchBlockerParams.x = 0;
+                    docsTouchBlockerParams.y = stripTop;
 
                     wm.addView(docsTouchBlocker, docsTouchBlockerParams);
                 } else {
-                    if (docsTouchBlockerParams.x != rect.left || 
-                        docsTouchBlockerParams.y != rect.top || 
-                        docsTouchBlockerParams.width != rect.width() || 
-                        docsTouchBlockerParams.height != rect.height()) {
-                        
-                        docsTouchBlockerParams.width = rect.width();
-                        docsTouchBlockerParams.height = rect.height();
-                        docsTouchBlockerParams.x = rect.left;
-                        docsTouchBlockerParams.y = rect.top;
+                    boolean needsUpdate = docsTouchBlockerParams.y != stripTop ||
+                                          docsTouchBlockerParams.width != screenWidth ||
+                                          docsTouchBlockerParams.height != stripHeight;
+                    if (needsUpdate) {
+                        docsTouchBlockerParams.width = screenWidth;
+                        docsTouchBlockerParams.height = stripHeight;
+                        docsTouchBlockerParams.x = 0;
+                        docsTouchBlockerParams.y = stripTop;
                         wm.updateViewLayout(docsTouchBlocker, docsTouchBlockerParams);
                     }
                 }
@@ -451,30 +463,31 @@ public class BlockerService extends AccessibilityService {
         public void run() {
             if (!isBrowserKillLoopActive) return;
             
+            long elapsed = System.currentTimeMillis() - browserKillLoopStartTime;
             boolean isSearchActive = false;
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root != null) {
                 try {
-                    if (checkDocsSearchDeep(root)) {
+                    if (checkDocsSearchDeep(root) || hasWebViewInTree(root, 0)) {
                         isSearchActive = true;
-                        doGoogleDocsBlock();
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        doGoogleDocsBlock(true);
                     }
                 } finally {
                     root.recycle();
                 }
             }
             
-            long elapsed = System.currentTimeMillis() - browserKillLoopStartTime;
-            
-            if (!isSearchActive && (hasBlockedCurrentSearch || elapsed > 1000)) {
+            if (!isSearchActive && (hasBlockedCurrentSearch || elapsed > 600)) {
                 dismissOverlayWithAnimation();
                 isBrowserKillLoopActive = false;
                 return;
             }
             
             if (isBrowserKillLoopActive) {
-                if (elapsed < 2100) {
-                    long delay = (elapsed < 600) ? 15L : 100L;
+                if (elapsed < 3000) {
+                    // Ultra-fast polling: 10ms for first 400ms, then 50ms
+                    long delay = (elapsed < 400) ? 10L : 50L;
                     mainHandler.postDelayed(this, delay);
                 } else {
                     dismissOverlayWithAnimation();
@@ -495,7 +508,7 @@ public class BlockerService extends AccessibilityService {
                 isBrowserKillLoopActive = false;
                 dismissOverlayWithAnimation();
             }
-        }, 1500);
+        }, 3000);
     }
 
     private void stopBrowserKillLoop() {
@@ -504,10 +517,69 @@ public class BlockerService extends AccessibilityService {
         dismissOverlayWithAnimation();
     }
 
+    // ===== PREEMPTIVE MENU WATCHDOG =====
+    // High-frequency monitor that polls every 25ms while insert image menu is visible
+    // Detects browser/webview opening BEFORE accessibility events are delivered
+    private boolean isMenuWatchdogActive = false;
+    
+    private final Runnable menuWatchdogRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isMenuWatchdogActive) return;
+            
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    CharSequence rootPkg = root.getPackageName();
+                    String rootPkgStr = rootPkg != null ? rootPkg.toString().toLowerCase() : "";
+                    
+                    // If a browser is now in the foreground, block immediately
+                    if (isMonitoredSearchPackage(rootPkgStr)) {
+                        isMenuWatchdogActive = false;
+                        showInstantZeroFlashOverlay();
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        startBrowserKillLoop();
+                        return;
+                    }
+                    
+                    // Check for webview appearing within Docs
+                    if (isGoogleDocsPackage(rootPkgStr) && hasWebViewInTree(root, 0)) {
+                        isMenuWatchdogActive = false;
+                        showInstantZeroFlashOverlay();
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        startBrowserKillLoop();
+                        return;
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+            
+            if (isMenuWatchdogActive) {
+                mainHandler.postDelayed(this, 25);
+            }
+        }
+    };
+    
+    private void startMenuWatchdog() {
+        if (isMenuWatchdogActive) return;
+        isMenuWatchdogActive = true;
+        mainHandler.postDelayed(menuWatchdogRunnable, 25);
+    }
+    
+    private void stopMenuWatchdog() {
+        isMenuWatchdogActive = false;
+        mainHandler.removeCallbacks(menuWatchdogRunnable);
+    }
+
     private void doFromWebClickBlock() {
         hasBlockedCurrentSearch = false;
+        stopMenuWatchdog();
+        // Show full-screen opaque overlay IMMEDIATELY
         showInstantZeroFlashOverlay();
+        // Double BACK for maximum kill speed
         performGlobalAction(GLOBAL_ACTION_BACK);
+        mainHandler.postDelayed(() -> performGlobalAction(GLOBAL_ACTION_BACK), 30);
         startBrowserKillLoop();
     }
 
@@ -537,7 +609,7 @@ public class BlockerService extends AccessibilityService {
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType, String pkgName) {
-        // Manage Touch Blocker Overlay dynamically on window content/state changes
+        // Manage Touch Blocker Overlay and Menu Watchdog on window content/state changes
         if (isGoogleDocsPackage(pkgName)) {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
@@ -551,12 +623,16 @@ public class BlockerService extends AccessibilityService {
                                 Rect rect = new Rect();
                                 fromWebNode.getBoundsInScreen(rect);
                                 fromWebNode.recycle();
-                                showDocsTouchBlocker(rect);
-                            } else {
-                                hideDocsTouchBlocker();
+                                if (rect.width() > 0 && rect.height() > 0) {
+                                    showDocsTouchBlocker(rect);
+                                }
                             }
+                            // Keep touch blocker even if node not found yet (may be loading)
+                            // Start pre-emptive watchdog to catch browser opening instantly
+                            startMenuWatchdog();
                         } else {
                             hideDocsTouchBlocker();
+                            stopMenuWatchdog();
                         }
                     } finally {
                         root.recycle();
