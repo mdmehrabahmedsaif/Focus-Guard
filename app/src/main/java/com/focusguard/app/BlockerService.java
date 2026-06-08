@@ -82,6 +82,8 @@ public class BlockerService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (prefManager == null) return;
 
+        int eventType = event.getEventType();
+
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
@@ -111,8 +113,6 @@ public class BlockerService extends AccessibilityService {
             }
             isFromWebOptionVisible = false;
         }
-
-        int eventType = event.getEventType();
 
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             lastWindowStateChangedTime = System.currentTimeMillis();
