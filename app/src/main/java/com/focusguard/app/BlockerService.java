@@ -2093,8 +2093,8 @@ public class BlockerService extends AccessibilityService {
     private long lastWindowStateChangedTime = 0;
 
     private void kickOutToGoogleDocsHome() {
-        // A single BACK action destroys the browser fragment and returns to the document.
-        performGlobalAction(GLOBAL_ACTION_BACK);
+        // Kick out of Google Docs entirely and send user to Home screen.
+        performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
     /**
@@ -2218,8 +2218,8 @@ public class BlockerService extends AccessibilityService {
         // Show instant overlay (0.00s Zero-Flash) to completely cover transition
         showInstantZeroFlashOverlay();
 
-        // Send an immediate synchronous Back press to dismiss the bottom sheet / cancel transition
-        performGlobalAction(GLOBAL_ACTION_BACK);
+        // Immediately kick the user out to the Home screen
+        performGlobalAction(GLOBAL_ACTION_HOME);
         
         // Start the watchdog loop to catch and kill the browser if it still opens
         startBrowserKillLoop();
