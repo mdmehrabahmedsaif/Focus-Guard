@@ -123,16 +123,6 @@ public class BlockerService extends AccessibilityService {
                                          pkgName.contains("keyboard") || 
                                          pkgName.contains("ime");
 
-        if (!prefManager.isPrivateDNSBlocked() || (!isSettingsPkg && !isSystemOrKeyboardPkg)) {
-            hideDnsTouchBlocker();
-            stopDnsKillLoop();
-        }
-
-        if (!prefManager.isBlockerHeroAccessibilityBlocked() || (!isSettingsPkg && !isSystemOrKeyboardPkg)) {
-            hideBlockerHeroTouchBlocker();
-            stopBlockerHeroAccKillLoop();
-        }
-
         // 0.00s Instant Google Assistant & Google App Blocker
         if (prefManager.isGoogleAssistantBlocked()) {
             if (!isBrowserKillLoopActive) {
@@ -224,14 +214,7 @@ public class BlockerService extends AccessibilityService {
                 if (prefManager.isUninstallProtected()) {
                     handleUninstallProtection(event, eventType);
                 }
-                // Check Private DNS Protection
-                if (prefManager.isPrivateDNSBlocked() && (isSettingsPkg || isSystemPkg)) {
-                    handlePrivateDNSProtection(event, eventType);
-                }
-                // Check BlockerHero Accessibility Protection
-                if (prefManager.isBlockerHeroAccessibilityBlocked() && (isSettingsPkg || isSystemPkg)) {
-                    handleBlockerHeroAccessibilityProtection(event, eventType, pkgName);
-                }
+
             }
         }
 
@@ -240,16 +223,7 @@ public class BlockerService extends AccessibilityService {
             if (prefManager.isWhatsAppBlocked()) {
                 handleWhatsApp(event, eventType);
             }
-        } else if (PKG_YOUTUBE.equals(pkgName)) {
-            if (prefManager.isYouTubeBlocked()) {
-                handleYouTube(event, eventType);
-            }
-        } else if (PKG_INSTAGRAM.equals(pkgName)) {
-            if (prefManager.isInstagramBlocked()
-                    && (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                     || eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
-                handleInstagram();
-            }
+
         } else if (PKG_BLOCKER_HERO.equals(pkgName)) {
             if (prefManager.isBlockerHeroBlocked()) {
                 doBlockerHeroCompleteBlock();

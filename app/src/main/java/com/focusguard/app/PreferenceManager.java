@@ -49,7 +49,7 @@ public class PreferenceManager {
     }
 
     public boolean isYouTubeBlocked() {
-        return prefs.getBoolean(KEY_BLOCK_YOUTUBE, true);
+        return false;
     }
 
     public void setInstagramBlocked(boolean blocked) {
@@ -57,7 +57,7 @@ public class PreferenceManager {
     }
 
     public boolean isInstagramBlocked() {
-        return prefs.getBoolean(KEY_BLOCK_INSTAGRAM, true);
+        return false;
     }
 
     public void setGoogleDocsBlocked(boolean blocked) {
@@ -105,7 +105,7 @@ public class PreferenceManager {
     }
 
     public boolean isPrivateDNSBlocked() {
-        return prefs.getBoolean(KEY_BLOCK_PRIVATE_DNS, true);
+        return false;
     }
 
     public void setBlockerHeroBlocked(boolean blocked) {
@@ -121,7 +121,7 @@ public class PreferenceManager {
     }
 
     public boolean isBlockerHeroAccessibilityBlocked() {
-        return prefs.getBoolean(KEY_BLOCK_BLOCKER_HERO_ACCESSIBILITY, false);
+        return false;
     }
 
     public void setEmergencyPassword(String password) {
