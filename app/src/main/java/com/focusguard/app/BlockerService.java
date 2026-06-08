@@ -2428,12 +2428,24 @@ public class BlockerService extends AccessibilityService {
 
             // Fallback: if "From web" option is visible on screen, and event.getSource() is null,
             // we assume it is a click on "From web" to prevent bypasses and flashing.
-            if (!isFromWebClick && isFromWebOptionVisible) {
-                AccessibilityNodeInfo source = event.getSource();
-                if (source == null) {
-                    isFromWebClick = true;
-                } else {
-                    source.recycle();
+            if (!isFromWebClick) {
+                if (!isFromWebOptionVisible) {
+                    AccessibilityNodeInfo root = getRootInActiveWindow();
+                    if (root != null) {
+                        try {
+                            isFromWebOptionVisible = isInsertImageMenuOpen(root);
+                        } finally {
+                            root.recycle();
+                        }
+                    }
+                }
+                if (isFromWebOptionVisible) {
+                    AccessibilityNodeInfo source = event.getSource();
+                    if (source == null) {
+                        isFromWebClick = true;
+                    } else {
+                        source.recycle();
+                    }
                 }
             }
 
