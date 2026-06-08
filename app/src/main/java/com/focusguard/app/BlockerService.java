@@ -88,6 +88,32 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
 
+        // Catch "Image" clicked to pre-emptively block touches
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isGoogleDocsPackage(pkgName)) {
+            boolean isImageClicked = false;
+            String eventTxt = getEventText(event);
+            if (isImageMenuClicked(eventTxt)) {
+                isImageClicked = true;
+            } else {
+                AccessibilityNodeInfo source = event.getSource();
+                if (source != null) {
+                    try {
+                        CharSequence srcText = source.getText();
+                        CharSequence srcDesc = source.getContentDescription();
+                        if (isImageMenuClicked(srcText != null ? srcText.toString() : null) ||
+                            isImageMenuClicked(srcDesc != null ? srcDesc.toString() : null)) {
+                            isImageClicked = true;
+                        }
+                    } finally {
+                        source.recycle();
+                    }
+                }
+            }
+            if (isImageClicked) {
+                startPreemptiveTouchBlocker();
+            }
+        }
+
         boolean isSettingsPkg = pkgName.contains("settings");
         boolean isSystemOrKeyboard = "android".equals(pkgName) || 
                                      "com.android.systemui".equals(pkgName) || 
@@ -108,6 +134,8 @@ public class BlockerService extends AccessibilityService {
             stopBrowserKillLoop();
             // Only remove touch blocker on actual app switch, not background events
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                isWaitingForImageMenu = false;
+                mainHandler.removeCallbacks(preemptiveTimeoutRunnable);
                 hideDocsTouchBlocker();
                 stopMenuWatchdog();
             }
@@ -401,10 +429,11 @@ public class BlockerService extends AccessibilityService {
                 for (AccessibilityNodeInfo hit : hits) {
                     if (hit == null) continue;
                     AccessibilityNodeInfo clickableAncestor = findClickableAncestor(hit);
-                    hit.recycle();
                     if (clickableAncestor != null) {
+                        hit.recycle();
                         return clickableAncestor;
                     }
+                    return hit;
                 }
             }
         }
@@ -439,6 +468,135 @@ public class BlockerService extends AccessibilityService {
     private boolean isFromWebOptionVisible = false;
     private long lastWindowStateChangedTime = 0;
 
+    private boolean isWaitingForImageMenu = false;
+    private final Runnable preemptiveTimeoutRunnable = () -> {
+        if (isWaitingForImageMenu) {
+            isWaitingForImageMenu = false;
+            hideDocsTouchBlocker();
+        }
+    };
+
+    private boolean isImageMenuClicked(String text) {
+        if (text == null) return false;
+        String s = text.toLowerCase().trim();
+        return s.contains("image") || 
+               s.contains("ছবি") || 
+               s.contains("imagen") || 
+               s.contains("imagem") || 
+               s.contains("immagine") || 
+               s.contains("bild") || 
+               s.contains("afbeelding") || 
+               s.contains("görsel") || 
+               s.contains("resim") || 
+               s.contains("चित्र") || 
+               s.contains("इमेज") || 
+               s.contains("изображение") ||
+               s.contains("图片") ||
+               s.contains("画像") ||
+               s.contains("이미지");
+    }
+
+    private void startPreemptiveTouchBlocker() {
+        isWaitingForImageMenu = true;
+        showPreemptiveTouchBlocker();
+        mainHandler.removeCallbacks(preemptiveTimeoutRunnable);
+        mainHandler.postDelayed(preemptiveTimeoutRunnable, 1500);
+    }
+
+    private void showPreemptiveTouchBlocker() {
+        Runnable r = () -> {
+            try {
+                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                if (wm == null) return;
+                android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+                int screenWidth = dm.widthPixels;
+                int screenHeight = dm.heightPixels;
+                int blockerHeight = screenHeight / 2;
+                int blockerTop = screenHeight - blockerHeight;
+
+                if (docsTouchBlocker == null) {
+                    docsTouchBlocker = new View(BlockerService.this);
+                    docsTouchBlocker.setBackgroundColor(Color.argb(160, 18, 18, 28));
+                    docsTouchBlocker.setOnTouchListener((v, event1) -> true);
+
+                    docsTouchBlockerParams = new WindowManager.LayoutParams(
+                        screenWidth,
+                        blockerHeight,
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        PixelFormat.TRANSLUCENT
+                    );
+                    docsTouchBlockerParams.gravity = Gravity.LEFT | Gravity.TOP;
+                    docsTouchBlockerParams.x = 0;
+                    docsTouchBlockerParams.y = blockerTop;
+
+                    wm.addView(docsTouchBlocker, docsTouchBlockerParams);
+                } else {
+                    docsTouchBlockerParams.width = screenWidth;
+                    docsTouchBlockerParams.height = blockerHeight;
+                    docsTouchBlockerParams.x = 0;
+                    docsTouchBlockerParams.y = blockerTop;
+                    wm.updateViewLayout(docsTouchBlocker, docsTouchBlockerParams);
+                }
+            } catch (Exception ignored) {}
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
+    }
+
+    private void showDefaultDocsTouchBlocker() {
+        Runnable r = () -> {
+            try {
+                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                if (wm == null) return;
+                android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+                int screenWidth = dm.widthPixels;
+                int screenHeight = dm.heightPixels;
+                int heightPx = (int) (100 * dm.density);
+                int topPx = screenHeight - heightPx;
+
+                if (docsTouchBlocker == null) {
+                    docsTouchBlocker = new View(BlockerService.this);
+                    docsTouchBlocker.setBackgroundColor(Color.argb(160, 18, 18, 28));
+                    docsTouchBlocker.setOnTouchListener((v, event1) -> true);
+
+                    docsTouchBlockerParams = new WindowManager.LayoutParams(
+                        screenWidth,
+                        heightPx,
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        PixelFormat.TRANSLUCENT
+                    );
+                    docsTouchBlockerParams.gravity = Gravity.LEFT | Gravity.TOP;
+                    docsTouchBlockerParams.x = 0;
+                    docsTouchBlockerParams.y = topPx;
+
+                    wm.addView(docsTouchBlocker, docsTouchBlockerParams);
+                } else {
+                    docsTouchBlockerParams.width = screenWidth;
+                    docsTouchBlockerParams.height = heightPx;
+                    docsTouchBlockerParams.x = 0;
+                    docsTouchBlockerParams.y = topPx;
+                    wm.updateViewLayout(docsTouchBlocker, docsTouchBlockerParams);
+                }
+            } catch (Exception ignored) {}
+        };
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            r.run();
+        } else {
+            mainHandler.post(r);
+        }
+    }
+
     private void kickOutToGoogleDocsHome() {
         performGlobalAction(GLOBAL_ACTION_BACK);
     }
@@ -468,7 +626,11 @@ public class BlockerService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root != null) {
                 try {
-                    if (checkDocsSearchDeep(root) || hasWebViewInTree(root, 0)) {
+                    CharSequence rootPkg = root.getPackageName();
+                    String rootPkgStr = rootPkg != null ? rootPkg.toString().toLowerCase() : "";
+                    boolean isBrowserActive = isMonitoredSearchPackage(rootPkgStr) && !rootPkgStr.equals(OUR_PACKAGE);
+
+                    if (isBrowserActive || checkDocsSearchDeep(root) || hasWebViewInTree(root, 0)) {
                         isSearchActive = true;
                         performGlobalAction(GLOBAL_ACTION_BACK);
                         doGoogleDocsBlock(true);
@@ -618,6 +780,9 @@ public class BlockerService extends AccessibilityService {
                 if (root != null) {
                     try {
                         if (isInsertImageMenuOpen(root)) {
+                            isWaitingForImageMenu = false;
+                            mainHandler.removeCallbacks(preemptiveTimeoutRunnable);
+                            
                             AccessibilityNodeInfo fromWebNode = findFromWebListItem(root);
                             if (fromWebNode != null) {
                                 Rect rect = new Rect();
@@ -625,14 +790,19 @@ public class BlockerService extends AccessibilityService {
                                 fromWebNode.recycle();
                                 if (rect.width() > 0 && rect.height() > 0) {
                                     showDocsTouchBlocker(rect);
+                                } else {
+                                    showDefaultDocsTouchBlocker();
                                 }
+                            } else {
+                                showDefaultDocsTouchBlocker();
                             }
-                            // Keep touch blocker even if node not found yet (may be loading)
                             // Start pre-emptive watchdog to catch browser opening instantly
                             startMenuWatchdog();
                         } else {
-                            hideDocsTouchBlocker();
-                            stopMenuWatchdog();
+                            if (!isWaitingForImageMenu) {
+                                hideDocsTouchBlocker();
+                                stopMenuWatchdog();
+                            }
                         }
                     } finally {
                         root.recycle();
