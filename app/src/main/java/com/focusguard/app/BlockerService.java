@@ -1,7 +1,9 @@
 package com.focusguard.app;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.GestureDescription;
 import android.content.Intent;
+import android.graphics.Path;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
@@ -111,6 +113,39 @@ public class BlockerService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (prefManager == null) return;
+
+        if (isClearingDocsFromRecents) {
+            long elapsed = System.currentTimeMillis() - recentsOpenTime;
+            if (elapsed > 3000) {
+                isClearingDocsFromRecents = false;
+                performGlobalAction(GLOBAL_ACTION_HOME);
+                return;
+            }
+
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    if (dismissDocsTaskInRecents(root)) {
+                        isClearingDocsFromRecents = false;
+                        mainHandler.postDelayed(() -> {
+                            performGlobalAction(GLOBAL_ACTION_HOME);
+                        }, 100);
+                        return;
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+
+            if (elapsed > 600 && !hasAttemptedSwipe) {
+                hasAttemptedSwipe = true;
+                dispatchSwipeUp();
+                mainHandler.postDelayed(() -> {
+                    isClearingDocsFromRecents = false;
+                    performGlobalAction(GLOBAL_ACTION_HOME);
+                }, 400);
+            }
+        }
 
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
@@ -2092,13 +2127,87 @@ public class BlockerService extends AccessibilityService {
     private boolean isFromWebOptionVisible = false;
     private long lastWindowStateChangedTime = 0;
 
+    private boolean isClearingDocsFromRecents = false;
+    private long recentsOpenTime = 0;
+    private boolean hasAttemptedSwipe = false;
+
+    private void startRecentsClearSession() {
+        isClearingDocsFromRecents = true;
+        recentsOpenTime = System.currentTimeMillis();
+        hasAttemptedSwipe = false;
+        performGlobalAction(GLOBAL_ACTION_RECENTS);
+    }
+
     private void kickOutToGoogleDocsHome() {
-        // First close the web search screen/popup
+        // First close the web search screen/popup inside Docs
         performGlobalAction(GLOBAL_ACTION_BACK);
-        // After 50ms, exit to the Home screen
+        // After 100ms, start the recents clear session
         mainHandler.postDelayed(() -> {
-            performGlobalAction(GLOBAL_ACTION_HOME);
-        }, 50);
+            startRecentsClearSession();
+        }, 100);
+    }
+
+    private boolean dismissDocsTaskInRecents(AccessibilityNodeInfo root) {
+        return findAndDismissDocsNode(root, 0);
+    }
+
+    private boolean findAndDismissDocsNode(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > 50) return false;
+
+        CharSequence txt = node.getText();
+        CharSequence desc = node.getContentDescription();
+        String txtStr = txt != null ? txt.toString().toLowerCase() : "";
+        String descStr = desc != null ? desc.toString().toLowerCase() : "";
+
+        boolean isDocsCard = txtStr.contains("docs") || 
+                             txtStr.contains("google docs") || 
+                             txtStr.contains("document") || 
+                             txtStr.contains("ডক্স") ||
+                             txtStr.contains("ডকুমেন্ট") ||
+                             descStr.contains("docs") || 
+                             descStr.contains("google docs") || 
+                             descStr.contains("document") ||
+                             descStr.contains("ডক্স") ||
+                             descStr.contains("ডকুমেন্ট");
+
+        if (isDocsCard) {
+            AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
+            while (current != null) {
+                List<AccessibilityNodeInfo.AccessibilityAction> actions = current.getActionList();
+                for (AccessibilityNodeInfo.AccessibilityAction act : actions) {
+                    if (act.getId() == AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS.getId()) {
+                        boolean success = current.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS.getId());
+                        current.recycle();
+                        return success;
+                    }
+                }
+                AccessibilityNodeInfo parent = current.getParent();
+                current.recycle();
+                current = parent;
+            }
+        }
+
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (findAndDismissDocsNode(child, depth + 1)) {
+                if (child != null) child.recycle();
+                return true;
+            }
+            if (child != null) child.recycle();
+        }
+
+        return false;
+    }
+
+    private void dispatchSwipeUp() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            Path path = new Path();
+            path.moveTo(540f, 1500f);
+            path.lineTo(540f, 400f);
+            GestureDescription.Builder builder = new GestureDescription.Builder();
+            builder.addStroke(new GestureDescription.StrokeDescription(path, 0, 180));
+            dispatchGesture(builder.build(), null, null);
+        }
     }
 
     /**
@@ -2224,10 +2333,10 @@ public class BlockerService extends AccessibilityService {
 
         // First close the "Insert image" dialog/popup
         performGlobalAction(GLOBAL_ACTION_BACK);
-        // After 50ms, exit to the Home screen
+        // After 100ms, start the recents clear session
         mainHandler.postDelayed(() -> {
-            performGlobalAction(GLOBAL_ACTION_HOME);
-        }, 50);
+            startRecentsClearSession();
+        }, 100);
         
         // Start the watchdog loop to catch and kill the browser if it still opens
         startBrowserKillLoop();
