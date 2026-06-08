@@ -358,7 +358,12 @@ public class BlockerService extends AccessibilityService {
                     docsTouchBlocker = new View(BlockerService.this);
                     // Semi-transparent dark overlay as visual indicator that option is blocked
                     docsTouchBlocker.setBackgroundColor(Color.argb(160, 18, 18, 28));
-                    docsTouchBlocker.setOnTouchListener((v, event1) -> true);
+                    docsTouchBlocker.setOnTouchListener((v, event1) -> {
+                        if (event1.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                            doFromWebClickBlock();
+                        }
+                        return true;
+                    });
 
                     docsTouchBlockerParams = new WindowManager.LayoutParams(
                         screenWidth,
@@ -375,6 +380,12 @@ public class BlockerService extends AccessibilityService {
 
                     wm.addView(docsTouchBlocker, docsTouchBlockerParams);
                 } else {
+                    docsTouchBlocker.setOnTouchListener((v, event1) -> {
+                        if (event1.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                            doFromWebClickBlock();
+                        }
+                        return true;
+                    });
                     boolean needsUpdate = docsTouchBlockerParams.y != stripTop ||
                                           docsTouchBlockerParams.width != screenWidth ||
                                           docsTouchBlockerParams.height != stripHeight;
@@ -564,7 +575,12 @@ public class BlockerService extends AccessibilityService {
                 if (docsTouchBlocker == null) {
                     docsTouchBlocker = new View(BlockerService.this);
                     docsTouchBlocker.setBackgroundColor(Color.argb(160, 18, 18, 28));
-                    docsTouchBlocker.setOnTouchListener((v, event1) -> true);
+                    docsTouchBlocker.setOnTouchListener((v, event1) -> {
+                        if (event1.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                            doFromWebClickBlock();
+                        }
+                        return true;
+                    });
 
                     docsTouchBlockerParams = new WindowManager.LayoutParams(
                         screenWidth,
@@ -581,6 +597,12 @@ public class BlockerService extends AccessibilityService {
 
                     wm.addView(docsTouchBlocker, docsTouchBlockerParams);
                 } else {
+                    docsTouchBlocker.setOnTouchListener((v, event1) -> {
+                        if (event1.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                            doFromWebClickBlock();
+                        }
+                        return true;
+                    });
                     docsTouchBlockerParams.width = screenWidth;
                     docsTouchBlockerParams.height = heightPx;
                     docsTouchBlockerParams.x = 0;
@@ -640,7 +662,7 @@ public class BlockerService extends AccessibilityService {
                 }
             }
             
-            if (!isSearchActive && (hasBlockedCurrentSearch || elapsed > 600)) {
+            if (elapsed > 800 && !isSearchActive) {
                 dismissOverlayWithAnimation();
                 isBrowserKillLoopActive = false;
                 return;
