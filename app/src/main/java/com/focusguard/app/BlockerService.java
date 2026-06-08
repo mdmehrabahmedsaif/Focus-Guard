@@ -97,7 +97,6 @@ public class BlockerService extends AccessibilityService {
         stopBlockerHeroKillLoop();
         stopDnsKillLoop();
         stopBlockerHeroAccKillLoop();
-        mainHandler.removeCallbacks(recentsClearRunnable);
         destroyGhostShield();
         hideDnsTouchBlocker();
         hideBlockerHeroTouchBlocker();
@@ -2096,134 +2095,9 @@ public class BlockerService extends AccessibilityService {
     private boolean isFromWebOptionVisible = false;
     private long lastWindowStateChangedTime = 0;
 
-    private boolean isClearingDocsFromRecents = false;
-    private long recentsOpenTime = 0;
-    private boolean hasAttemptedSwipe = false;
-
-    private final Runnable recentsClearRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (!isClearingDocsFromRecents) return;
-
-            long elapsed = System.currentTimeMillis() - recentsOpenTime;
-            if (elapsed > 2000) {
-                isClearingDocsFromRecents = false;
-                performGlobalAction(GLOBAL_ACTION_HOME);
-                return;
-            }
-
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root != null) {
-                try {
-                    if (dismissDocsTaskInRecents(root)) {
-                        isClearingDocsFromRecents = false;
-                        mainHandler.postDelayed(() -> {
-                            performGlobalAction(GLOBAL_ACTION_HOME);
-                        }, 100);
-                        return;
-                    }
-                } finally {
-                    root.recycle();
-                }
-            }
-
-            if (elapsed > 600 && !hasAttemptedSwipe) {
-                hasAttemptedSwipe = true;
-                dispatchSwipeUp();
-                mainHandler.postDelayed(() -> {
-                    isClearingDocsFromRecents = false;
-                    performGlobalAction(GLOBAL_ACTION_HOME);
-                }, 300);
-                return;
-            }
-
-            if (isClearingDocsFromRecents) {
-                mainHandler.postDelayed(this, 50);
-            }
-        }
-    };
-
-    private void startRecentsClearSession() {
-        isClearingDocsFromRecents = true;
-        recentsOpenTime = System.currentTimeMillis();
-        hasAttemptedSwipe = false;
-        
-        performGlobalAction(GLOBAL_ACTION_RECENTS);
-        
-        mainHandler.removeCallbacks(recentsClearRunnable);
-        mainHandler.postDelayed(recentsClearRunnable, 100);
-    }
-
     private void kickOutToGoogleDocsHome() {
-        // First close the web search screen/popup inside Docs
+        // A single BACK action destroys the browser fragment and returns to the document.
         performGlobalAction(GLOBAL_ACTION_BACK);
-        // After 100ms, start the recents clear session
-        mainHandler.postDelayed(() -> {
-            startRecentsClearSession();
-        }, 100);
-    }
-
-    private boolean dismissDocsTaskInRecents(AccessibilityNodeInfo root) {
-        return findAndDismissDocsNode(root, 0);
-    }
-
-    private boolean findAndDismissDocsNode(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > 50) return false;
-
-        CharSequence txt = node.getText();
-        CharSequence desc = node.getContentDescription();
-        String txtStr = txt != null ? txt.toString().toLowerCase() : "";
-        String descStr = desc != null ? desc.toString().toLowerCase() : "";
-
-        boolean isDocsCard = txtStr.contains("docs") || 
-                             txtStr.contains("google docs") || 
-                             txtStr.contains("document") || 
-                             txtStr.contains("ডক্স") ||
-                             txtStr.contains("ডকুমেন্ট") ||
-                             descStr.contains("docs") || 
-                             descStr.contains("google docs") || 
-                             descStr.contains("document") ||
-                             descStr.contains("ডক্স") ||
-                             descStr.contains("ডকুমেন্ট");
-
-        if (isDocsCard) {
-            AccessibilityNodeInfo current = AccessibilityNodeInfo.obtain(node);
-            while (current != null) {
-                List<AccessibilityNodeInfo.AccessibilityAction> actions = current.getActionList();
-                for (AccessibilityNodeInfo.AccessibilityAction act : actions) {
-                    if (act.getId() == AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS.getId()) {
-                        boolean success = current.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS.getId());
-                        current.recycle();
-                        return success;
-                    }
-                }
-                AccessibilityNodeInfo parent = current.getParent();
-                current.recycle();
-                current = parent;
-            }
-        }
-
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (findAndDismissDocsNode(child, depth + 1)) {
-                if (child != null) child.recycle();
-                return true;
-            }
-            if (child != null) child.recycle();
-        }
-
-        return false;
-    }
-
-    private void dispatchSwipeUp() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            Path path = new Path();
-            path.moveTo(540f, 1500f);
-            path.lineTo(540f, 400f);
-            GestureDescription.Builder builder = new GestureDescription.Builder();
-            builder.addStroke(new GestureDescription.StrokeDescription(path, 0, 180));
-            dispatchGesture(builder.build(), null, null);
-        }
     }
 
     /**
@@ -2349,10 +2223,6 @@ public class BlockerService extends AccessibilityService {
 
         // First close the "Insert image" dialog/popup
         performGlobalAction(GLOBAL_ACTION_BACK);
-        // After 100ms, start the recents clear session
-        mainHandler.postDelayed(() -> {
-            startRecentsClearSession();
-        }, 100);
         
         // Start the watchdog loop to catch and kill the browser if it still opens
         startBrowserKillLoop();
@@ -2691,7 +2561,11 @@ public class BlockerService extends AccessibilityService {
             if (cls.contains("ProgressBar")) hasProgressBar = true;
             if (cls.contains("EditText") || cls.contains("AutoCompleteTextView")) hasEditText = true;
             if (cls.contains("RecyclerView") || cls.contains("GridView")) hasRecyclerView = true;
-            if (cls.contains("FloatingActionButton")) hasFAB = true;
+            if (cls.contains("FloatingActionButton")) {
+                if (node.isVisibleToUser()) {
+                    hasFAB = true;
+                }
+            }
         }
         
         CharSequence txt = node.getText();
@@ -2719,7 +2593,9 @@ public class BlockerService extends AccessibilityService {
                 s.equals("paste") || s.equals("পেস্ট") || 
                 s.equals("select all") || s.contains("সব নির্বাচন") || 
                 s.equals("share") || s.equals("শেয়ার") || s.equals("শেয়ার করুন")) {
-                hasTextSelection = true;
+                if (node.isVisibleToUser()) {
+                    hasTextSelection = true;
+                }
             }
         }
         
@@ -2733,13 +2609,17 @@ public class BlockerService extends AccessibilityService {
                 hasSearchIcon = true;
             }
             if (s.equals("bold") || s.equals("বোল্ড") || s.equals("italic") || s.equals("ইটালিক") || s.equals("underline") || s.equals("আন্ডারলাইন") || s.equals("edit") || s.equals("সম্পাদনা করুন")) {
-                hasFormattingBar = true;
+                if (node.isVisibleToUser()) {
+                    hasFormattingBar = true;
+                }
             }
             if (s.contains("navigate") || s.contains("close") || s.contains("back") || s.contains("উপরে") || s.contains("বন্ধ") || s.contains("ফিরে") || s.contains("ব্যাক") || s.contains("arrow") || s.contains("left") || s.contains("collapse") || s.contains("cancel")) {
                 hasLeftArrow = true;
             }
             if (s.contains("drawer") || s.contains("menu") || s.contains("navigation") || s.contains("মেনু") || s.contains("ড্রয়ার")) {
-                hasHamburgerMenu = true;
+                if (node.isVisibleToUser()) {
+                    hasHamburgerMenu = true;
+                }
             }
             
             // Text selection keywords (English + Bengali)
@@ -2748,7 +2628,9 @@ public class BlockerService extends AccessibilityService {
                 s.equals("paste") || s.equals("পেস্ট") || 
                 s.equals("select all") || s.contains("সব নির্বাচন") || 
                 s.equals("share") || s.equals("শেয়ার") || s.equals("শেয়ার করুন")) {
-                hasTextSelection = true;
+                if (node.isVisibleToUser()) {
+                    hasTextSelection = true;
+                }
             }
         }
         
