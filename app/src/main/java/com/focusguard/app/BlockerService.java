@@ -97,6 +97,7 @@ public class BlockerService extends AccessibilityService {
         stopBlockerHeroKillLoop();
         stopDnsKillLoop();
         stopBlockerHeroAccKillLoop();
+        mainHandler.removeCallbacks(recentsClearRunnable);
         destroyGhostShield();
         hideDnsTouchBlocker();
         hideBlockerHeroTouchBlocker();
@@ -114,38 +115,6 @@ public class BlockerService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (prefManager == null) return;
 
-        if (isClearingDocsFromRecents) {
-            long elapsed = System.currentTimeMillis() - recentsOpenTime;
-            if (elapsed > 3000) {
-                isClearingDocsFromRecents = false;
-                performGlobalAction(GLOBAL_ACTION_HOME);
-                return;
-            }
-
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root != null) {
-                try {
-                    if (dismissDocsTaskInRecents(root)) {
-                        isClearingDocsFromRecents = false;
-                        mainHandler.postDelayed(() -> {
-                            performGlobalAction(GLOBAL_ACTION_HOME);
-                        }, 100);
-                        return;
-                    }
-                } finally {
-                    root.recycle();
-                }
-            }
-
-            if (elapsed > 600 && !hasAttemptedSwipe) {
-                hasAttemptedSwipe = true;
-                dispatchSwipeUp();
-                mainHandler.postDelayed(() -> {
-                    isClearingDocsFromRecents = false;
-                    performGlobalAction(GLOBAL_ACTION_HOME);
-                }, 400);
-            }
-        }
 
         CharSequence pkg = event.getPackageName();
         if (pkg == null) return;
@@ -2131,11 +2100,58 @@ public class BlockerService extends AccessibilityService {
     private long recentsOpenTime = 0;
     private boolean hasAttemptedSwipe = false;
 
+    private final Runnable recentsClearRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isClearingDocsFromRecents) return;
+
+            long elapsed = System.currentTimeMillis() - recentsOpenTime;
+            if (elapsed > 2000) {
+                isClearingDocsFromRecents = false;
+                performGlobalAction(GLOBAL_ACTION_HOME);
+                return;
+            }
+
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    if (dismissDocsTaskInRecents(root)) {
+                        isClearingDocsFromRecents = false;
+                        mainHandler.postDelayed(() -> {
+                            performGlobalAction(GLOBAL_ACTION_HOME);
+                        }, 100);
+                        return;
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+
+            if (elapsed > 600 && !hasAttemptedSwipe) {
+                hasAttemptedSwipe = true;
+                dispatchSwipeUp();
+                mainHandler.postDelayed(() -> {
+                    isClearingDocsFromRecents = false;
+                    performGlobalAction(GLOBAL_ACTION_HOME);
+                }, 300);
+                return;
+            }
+
+            if (isClearingDocsFromRecents) {
+                mainHandler.postDelayed(this, 50);
+            }
+        }
+    };
+
     private void startRecentsClearSession() {
         isClearingDocsFromRecents = true;
         recentsOpenTime = System.currentTimeMillis();
         hasAttemptedSwipe = false;
+        
         performGlobalAction(GLOBAL_ACTION_RECENTS);
+        
+        mainHandler.removeCallbacks(recentsClearRunnable);
+        mainHandler.postDelayed(recentsClearRunnable, 100);
     }
 
     private void kickOutToGoogleDocsHome() {
