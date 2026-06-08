@@ -88,32 +88,6 @@ public class BlockerService extends AccessibilityService {
         if (pkg == null) return;
         String pkgName = pkg.toString().toLowerCase();
 
-        // Catch "Image" clicked to pre-emptively block touches
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && isGoogleDocsPackage(pkgName)) {
-            boolean isImageClicked = false;
-            String eventTxt = getEventText(event);
-            if (isImageMenuClicked(eventTxt)) {
-                isImageClicked = true;
-            } else {
-                AccessibilityNodeInfo source = event.getSource();
-                if (source != null) {
-                    try {
-                        CharSequence srcText = source.getText();
-                        CharSequence srcDesc = source.getContentDescription();
-                        if (isImageMenuClicked(srcText != null ? srcText.toString() : null) ||
-                            isImageMenuClicked(srcDesc != null ? srcDesc.toString() : null)) {
-                            isImageClicked = true;
-                        }
-                    } finally {
-                        source.recycle();
-                    }
-                }
-            }
-            if (isImageClicked) {
-                startPreemptiveTouchBlocker();
-            }
-        }
-
         boolean isSettingsPkg = pkgName.contains("settings");
         boolean isSystemOrKeyboard = "android".equals(pkgName) || 
                                      "com.android.systemui".equals(pkgName) || 
@@ -134,8 +108,6 @@ public class BlockerService extends AccessibilityService {
             stopBrowserKillLoop();
             // Only remove touch blocker on actual app switch, not background events
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                isWaitingForImageMenu = false;
-                mainHandler.removeCallbacks(preemptiveTimeoutRunnable);
                 hideDocsTouchBlocker();
                 stopMenuWatchdog();
             }
@@ -479,87 +451,7 @@ public class BlockerService extends AccessibilityService {
     private boolean isFromWebOptionVisible = false;
     private long lastWindowStateChangedTime = 0;
 
-    private boolean isWaitingForImageMenu = false;
-    private final Runnable preemptiveTimeoutRunnable = () -> {
-        if (isWaitingForImageMenu) {
-            isWaitingForImageMenu = false;
-            hideDocsTouchBlocker();
-        }
-    };
 
-    private boolean isImageMenuClicked(String text) {
-        if (text == null) return false;
-        String s = text.toLowerCase().trim();
-        return s.contains("image") || 
-               s.contains("ছবি") || 
-               s.contains("imagen") || 
-               s.contains("imagem") || 
-               s.contains("immagine") || 
-               s.contains("bild") || 
-               s.contains("afbeelding") || 
-               s.contains("görsel") || 
-               s.contains("resim") || 
-               s.contains("चित्र") || 
-               s.contains("इमेज") || 
-               s.contains("изображение") ||
-               s.contains("图片") ||
-               s.contains("画像") ||
-               s.contains("이미지");
-    }
-
-    private void startPreemptiveTouchBlocker() {
-        isWaitingForImageMenu = true;
-        showPreemptiveTouchBlocker();
-        mainHandler.removeCallbacks(preemptiveTimeoutRunnable);
-        mainHandler.postDelayed(preemptiveTimeoutRunnable, 1500);
-    }
-
-    private void showPreemptiveTouchBlocker() {
-        Runnable r = () -> {
-            try {
-                WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-                if (wm == null) return;
-                android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
-                int screenWidth = dm.widthPixels;
-                int screenHeight = dm.heightPixels;
-                int blockerHeight = screenHeight / 2;
-                int blockerTop = screenHeight - blockerHeight;
-
-                if (docsTouchBlocker == null) {
-                    docsTouchBlocker = new View(BlockerService.this);
-                    docsTouchBlocker.setBackgroundColor(Color.argb(160, 18, 18, 28));
-                    docsTouchBlocker.setOnTouchListener((v, event1) -> true);
-
-                    docsTouchBlockerParams = new WindowManager.LayoutParams(
-                        screenWidth,
-                        blockerHeight,
-                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                        PixelFormat.TRANSLUCENT
-                    );
-                    docsTouchBlockerParams.gravity = Gravity.LEFT | Gravity.TOP;
-                    docsTouchBlockerParams.x = 0;
-                    docsTouchBlockerParams.y = blockerTop;
-
-                    wm.addView(docsTouchBlocker, docsTouchBlockerParams);
-                } else {
-                    docsTouchBlockerParams.width = screenWidth;
-                    docsTouchBlockerParams.height = blockerHeight;
-                    docsTouchBlockerParams.x = 0;
-                    docsTouchBlockerParams.y = blockerTop;
-                    wm.updateViewLayout(docsTouchBlocker, docsTouchBlockerParams);
-                }
-            } catch (Exception ignored) {}
-        };
-
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            r.run();
-        } else {
-            mainHandler.post(r);
-        }
-    }
 
     private void showDefaultDocsTouchBlocker() {
         Runnable r = () -> {
@@ -793,8 +685,25 @@ public class BlockerService extends AccessibilityService {
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType, String pkgName) {
-        // Manage Touch Blocker Overlay and Menu Watchdog on window content/state changes
         if (isGoogleDocsPackage(pkgName)) {
+            // Check if search panel is open on any change event (content or state change)
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    try {
+                        if (checkDocsSearchDeep(root)) {
+                            doGoogleDocsBlock(true);
+                            return;
+                        }
+                    } finally {
+                        root.recycle();
+                    }
+                }
+            }
+
+            // Manage Touch Blocker Overlay and Menu Watchdog on window content/state changes
             if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 
@@ -802,9 +711,6 @@ public class BlockerService extends AccessibilityService {
                 if (root != null) {
                     try {
                         if (isInsertImageMenuOpen(root)) {
-                            isWaitingForImageMenu = false;
-                            mainHandler.removeCallbacks(preemptiveTimeoutRunnable);
-                            
                             AccessibilityNodeInfo fromWebNode = findFromWebListItem(root);
                             if (fromWebNode != null) {
                                 Rect rect = new Rect();
@@ -821,10 +727,8 @@ public class BlockerService extends AccessibilityService {
                             // Start pre-emptive watchdog to catch browser opening instantly
                             startMenuWatchdog();
                         } else {
-                            if (!isWaitingForImageMenu) {
-                                hideDocsTouchBlocker();
-                                stopMenuWatchdog();
-                            }
+                            hideDocsTouchBlocker();
+                            stopMenuWatchdog();
                         }
                     } finally {
                         root.recycle();
@@ -988,7 +892,6 @@ public class BlockerService extends AccessibilityService {
                     }
                 }
             }
-
             if (isFromWebClick) {
                 doFromWebClickBlock();
                 isFromWebOptionVisible = false;
@@ -1015,74 +918,32 @@ public class BlockerService extends AccessibilityService {
     }
 
     private boolean isWebSearchExplicit = false;
-    private boolean hasSearchIcon = false;
-    private boolean hasFormattingBar = false;
     private boolean hasWebDomain = false;
-    private boolean hasLeftArrow = false;
-    private boolean hasWebView = false;
-    private boolean hasProgressBar = false;
-    private boolean hasEditText = false;
+    private boolean hasFormattingBar = false;
     private boolean hasHamburgerMenu = false;
     private boolean hasFAB = false;
-    private boolean hasRecyclerView = false;
-    private boolean hasTextSelection = false;
 
     private boolean checkDocsSearchDeep(AccessibilityNodeInfo root) {
         isWebSearchExplicit = false;
-        hasSearchIcon = false;
-        hasFormattingBar = false;
         hasWebDomain = false;
-        hasLeftArrow = false;
-        hasWebView = false;
-        hasProgressBar = false;
-        hasEditText = false;
+        hasFormattingBar = false;
         hasHamburgerMenu = false;
         hasFAB = false;
-        hasRecyclerView = false;
-        hasTextSelection = false;
         
-        boolean matched = scanDocsUIOptimized(root, 0);
-        if (matched) return true;
+        scanDocsUIOptimized(root, 0);
         
-        if (hasTextSelection) {
-            return false;
-        }
-
         if (hasFormattingBar || hasHamburgerMenu || hasFAB) {
             return false;
         }
         
-        if (hasWebView && hasLeftArrow) {
-            return true;
-        }
-        
-        if (hasWebView) {
-            return true;
-        }
-        
-        if (hasLeftArrow && hasEditText) {
-            return true;
-        }
-        
-        if (isWebSearchExplicit || hasSearchIcon || hasWebDomain) {
-            if (hasLeftArrow || hasEditText) {
-                return true;
-            }
-        }
-        
-        return false;
+        return isWebSearchExplicit || hasWebDomain;
     }
 
     private boolean scanDocsUIOptimized(AccessibilityNodeInfo node, int depth) {
         if (node == null || depth > 12) return false;
         
-        // Detect UI Structures
         if (node.getClassName() != null) {
             String cls = node.getClassName().toString();
-            if (cls.contains("WebView")) hasWebView = true;
-            if (cls.contains("ProgressBar")) hasProgressBar = true;
-            if (cls.contains("EditText") || cls.contains("AutoCompleteTextView")) hasEditText = true;
-            if (cls.contains("RecyclerView") || cls.contains("GridView")) hasRecyclerView = true;
             if (cls.contains("FloatingActionButton")) {
                 if (node.isVisibleToUser()) {
                     hasFAB = true;
@@ -1096,27 +957,8 @@ public class BlockerService extends AccessibilityService {
             if (isGoogleDocsSearchText(s)) {
                 isWebSearchExplicit = true;
             }
-            if (s.startsWith("www.") || s.contains(".com") || s.contains(".org") || s.contains(".net") || s.contains("wikipedia.org")) {
-                if (s.length() < 100 && !node.isEditable()) {
-                    hasWebDomain = true;
-                }
-            }
-            if (s.equals("search") || s.equals("অনুসন্ধান") || s.equals("সার্চ") || s.equals("search web") || s.equals("ওয়েবে খুঁজুন") || s.equals("search query") || s.equals("clear query") || s.equals("clear text") || s.equals("clear")) {
-                hasSearchIcon = true;
-            }
-            if (s.equals("navigate up") || s.equals("close") || s.equals("back") || s.equals("উপরে নেভিগেট করুন") || s.equals("বন্ধ করুন") || s.equals("ফিরে যান") || s.equals("ব্যাক")) {
-                hasLeftArrow = true;
-            }
-            
-            // Text selection keywords
-            if (s.equals("copy") || s.equals("কপি") || 
-                s.equals("cut") || s.equals("কাট") || 
-                s.equals("paste") || s.equals("পেস্ট") || 
-                s.equals("select all") || s.contains("সব নির্বাচন") || 
-                s.equals("share") || s.equals("শেয়ার") || s.equals("শেয়ার করুন")) {
-                if (node.isVisibleToUser()) {
-                    hasTextSelection = true;
-                }
+            if (s.contains("wikimedia.org") || s.contains("flickr.com") || s.contains("pixabay.com") || s.contains("openclipart.org") || s.contains("openverse.engineering")) {
+                hasWebDomain = true;
             }
         }
         
@@ -1126,38 +968,21 @@ public class BlockerService extends AccessibilityService {
             if (isGoogleDocsSearchText(s)) {
                 isWebSearchExplicit = true;
             }
-            if (s.contains("search") || s.contains("অনুসন্ধান") || s.contains("সার্চ") || s.contains("clear") || s.contains("query")) {
-                hasSearchIcon = true;
-            }
             if (s.equals("bold") || s.equals("বোল্ড") || s.equals("italic") || s.equals("ইটালিক") || s.equals("underline") || s.equals("আন্ডারলাইন") || s.equals("edit") || s.equals("সম্পাদনা করুন")) {
                 if (node.isVisibleToUser()) {
                     hasFormattingBar = true;
                 }
-            }
-            if (s.contains("navigate") || s.contains("close") || s.contains("back") || s.contains("উপরে") || s.contains("বন্ধ") || s.contains("ফিরে") || s.contains("ব্যাক") || s.contains("arrow") || s.contains("left") || s.contains("collapse") || s.contains("cancel")) {
-                hasLeftArrow = true;
             }
             if (s.contains("drawer") || s.contains("menu") || s.contains("navigation") || s.contains("মেনু") || s.contains("ড্রয়ার")) {
                 if (node.isVisibleToUser()) {
                     hasHamburgerMenu = true;
                 }
             }
-            
-            // Text selection keywords
-            if (s.equals("copy") || s.equals("কপি") || 
-                s.equals("cut") || s.equals("কাট") || 
-                s.equals("paste") || s.equals("পেস্ট") || 
-                s.equals("select all") || s.contains("সব নির্বাচন") || 
-                s.equals("share") || s.equals("শেয়ার") || s.equals("শেয়ার করুন")) {
-                if (node.isVisibleToUser()) {
-                    hasTextSelection = true;
-                }
-            }
         }
         
-        if (isWebSearchExplicit) return true;
-        if (hasLeftArrow && hasWebView) return true;
-        if (hasLeftArrow && hasEditText && hasProgressBar) return true;
+        if ((isWebSearchExplicit || hasWebDomain) && (hasFormattingBar || hasHamburgerMenu || hasFAB)) {
+            return true;
+        }
         
         int childCount = node.getChildCount();
         for (int i = 0; i < childCount; i++) {
