@@ -19,7 +19,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="FOCUSGUARD"
+            android:text="DOCSSHIELD"
             android:textColor="@color/neon_blue"
             android:textSize="28sp"
             android:textStyle="bold"

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Focus Guard</string>
-    <string name="accessibility_service_label">Focus Guard Blocker</string>
-    <string name="accessibility_description">Focus Guard monitors and blocks WhatsApp Channels, Google Docs Web Search, Google App, and Google Assistant to help you stay focused.</string>
+    <string name="app_name">DocsShield</string>
+    <string name="accessibility_service_label">DocsShield Blocker</string>
+    <string name="accessibility_description">DocsShield blocks Google Docs Web Search to help you stay focused.</string>
 </resources>
