@@ -2093,8 +2093,12 @@ public class BlockerService extends AccessibilityService {
     private long lastWindowStateChangedTime = 0;
 
     private void kickOutToGoogleDocsHome() {
-        // Kick out of Google Docs entirely and send user to Home screen.
-        performGlobalAction(GLOBAL_ACTION_HOME);
+        // First close the web search screen/popup
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        // After 50ms, exit to the Home screen
+        mainHandler.postDelayed(() -> {
+            performGlobalAction(GLOBAL_ACTION_HOME);
+        }, 50);
     }
 
     /**
@@ -2218,8 +2222,12 @@ public class BlockerService extends AccessibilityService {
         // Show instant overlay (0.00s Zero-Flash) to completely cover transition
         showInstantZeroFlashOverlay();
 
-        // Immediately kick the user out to the Home screen
-        performGlobalAction(GLOBAL_ACTION_HOME);
+        // First close the "Insert image" dialog/popup
+        performGlobalAction(GLOBAL_ACTION_BACK);
+        // After 50ms, exit to the Home screen
+        mainHandler.postDelayed(() -> {
+            performGlobalAction(GLOBAL_ACTION_HOME);
+        }, 50);
         
         // Start the watchdog loop to catch and kill the browser if it still opens
         startBrowserKillLoop();
