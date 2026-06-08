@@ -63,13 +63,7 @@
                 android:padding="8dp"
                 android:layout_marginBottom="24dp">
 
-                <include layout="@layout/item_switch_futuristic" android:id="@+id/rowWhatsApp" />
-                <View android:layout_width="match_parent" android:layout_height="0.5dp" android:background="#1E293B" android:layout_marginHorizontal="16dp"/>
-                <include layout="@layout/item_switch_futuristic" android:id="@+id/rowGoogleAssistant" />
-                <View android:layout_width="match_parent" android:layout_height="0.5dp" android:background="#1E293B" android:layout_marginHorizontal="16dp"/>
                 <include layout="@layout/item_switch_futuristic" android:id="@+id/rowGoogleDocs" />
-                <View android:layout_width="match_parent" android:layout_height="0.5dp" android:background="#1E293B" android:layout_marginHorizontal="16dp"/>
-                <include layout="@layout/item_switch_futuristic" android:id="@+id/rowBlockerHero" />
             </LinearLayout>
 
             <!-- Protection & Settings -->
@@ -171,38 +165,6 @@
                     android:letterSpacing="0.2"
                     android:layout_marginTop="8dp"
                     android:layout_marginBottom="12dp"/>
-
-                <!-- Accessibility Protection Switch -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp">
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="🔒 Accessibility Lock"
-                            android:textColor="@color/text_high"
-                            android:textStyle="bold"
-                            android:textSize="14sp"/>
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Block disabling service from settings"
-                            android:textColor="@color/text_low"
-                            android:textSize="11sp"/>
-                    </LinearLayout>
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/switchBlockAccessibility"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"/>
-                </LinearLayout>
 
                 <!-- Device Admin Protection Switch -->
                 <LinearLayout

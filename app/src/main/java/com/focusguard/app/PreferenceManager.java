@@ -6,19 +6,10 @@ import android.content.SharedPreferences;
 public class PreferenceManager {
     private static final String PREF_NAME = "FocusGuardSettings";
     
-    // Keys
     private static final String KEY_IS_SERVICE_ACTIVE = "is_service_active";
-    private static final String KEY_BLOCK_WHATSAPP = "block_whatsapp";
-    private static final String KEY_BLOCK_YOUTUBE = "block_youtube";
-    private static final String KEY_BLOCK_INSTAGRAM = "block_instagram";
     private static final String KEY_BLOCK_GOOGLE_DOCS = "block_google_docs";
-    private static final String KEY_BLOCK_GOOGLE_ASSISTANT = "block_google_assistant";
-    private static final String KEY_BLOCK_ACCESSIBILITY = "block_accessibility";
     private static final String KEY_BLOCK_DEVICE_ADMIN = "block_device_admin";
     private static final String KEY_BLOCK_UNINSTALL = "block_uninstall";
-    private static final String KEY_BLOCK_PRIVATE_DNS = "block_private_dns";
-    private static final String KEY_BLOCK_BLOCKER_HERO = "block_blocker_hero";
-    private static final String KEY_BLOCK_BLOCKER_HERO_ACCESSIBILITY = "block_blocker_hero_acc";
     private static final String KEY_EMERGENCY_PASSWORD = "emergency_password";
     private static final String KEY_TIMER_END_TIME = "timer_end_time";
 
@@ -36,52 +27,12 @@ public class PreferenceManager {
         return prefs.getBoolean(KEY_IS_SERVICE_ACTIVE, true);
     }
 
-    public void setWhatsAppBlocked(boolean blocked) {
-        prefs.edit().putBoolean(KEY_BLOCK_WHATSAPP, blocked).apply();
-    }
-
-    public boolean isWhatsAppBlocked() {
-        return prefs.getBoolean(KEY_BLOCK_WHATSAPP, true);
-    }
-
-    public void setYouTubeBlocked(boolean blocked) {
-        prefs.edit().putBoolean(KEY_BLOCK_YOUTUBE, blocked).apply();
-    }
-
-    public boolean isYouTubeBlocked() {
-        return false;
-    }
-
-    public void setInstagramBlocked(boolean blocked) {
-        prefs.edit().putBoolean(KEY_BLOCK_INSTAGRAM, blocked).apply();
-    }
-
-    public boolean isInstagramBlocked() {
-        return false;
-    }
-
     public void setGoogleDocsBlocked(boolean blocked) {
         prefs.edit().putBoolean(KEY_BLOCK_GOOGLE_DOCS, blocked).apply();
     }
 
     public boolean isGoogleDocsBlocked() {
         return prefs.getBoolean(KEY_BLOCK_GOOGLE_DOCS, true);
-    }
-
-    public void setGoogleAssistantBlocked(boolean blocked) {
-        prefs.edit().putBoolean(KEY_BLOCK_GOOGLE_ASSISTANT, blocked).apply();
-    }
-
-    public boolean isGoogleAssistantBlocked() {
-        return prefs.getBoolean(KEY_BLOCK_GOOGLE_ASSISTANT, true);
-    }
-
-    public void setAccessibilityProtected(boolean protected_acc) {
-        prefs.edit().putBoolean(KEY_BLOCK_ACCESSIBILITY, protected_acc).apply();
-    }
-
-    public boolean isAccessibilityProtected() {
-        return prefs.getBoolean(KEY_BLOCK_ACCESSIBILITY, false);
     }
 
     public void setDeviceAdminProtected(boolean protected_admin) {
@@ -98,30 +49,6 @@ public class PreferenceManager {
 
     public boolean isUninstallProtected() {
         return prefs.getBoolean(KEY_BLOCK_UNINSTALL, false);
-    }
-
-    public void setPrivateDNSBlocked(boolean blocked) {
-        prefs.edit().putBoolean(KEY_BLOCK_PRIVATE_DNS, blocked).apply();
-    }
-
-    public boolean isPrivateDNSBlocked() {
-        return false;
-    }
-
-    public void setBlockerHeroBlocked(boolean blocked) {
-        prefs.edit().putBoolean(KEY_BLOCK_BLOCKER_HERO, blocked).apply();
-    }
-
-    public boolean isBlockerHeroBlocked() {
-        return prefs.getBoolean(KEY_BLOCK_BLOCKER_HERO, false);
-    }
-
-    public void setBlockerHeroAccessibilityBlocked(boolean blocked) {
-        prefs.edit().putBoolean(KEY_BLOCK_BLOCKER_HERO_ACCESSIBILITY, blocked).apply();
-    }
-
-    public boolean isBlockerHeroAccessibilityBlocked() {
-        return false;
     }
 
     public void setEmergencyPassword(String password) {
@@ -143,4 +70,10 @@ public class PreferenceManager {
     public boolean isTimerActive() {
         return System.currentTimeMillis() < getTimerEndTime();
     }
+
+    // Dummy methods for backward compatibility/quick compilation
+    public boolean isWhatsAppBlocked() { return false; }
+    public boolean isGoogleAssistantBlocked() { return false; }
+    public boolean isBlockerHeroBlocked() { return false; }
+    public boolean isAccessibilityProtected() { return false; }
 }

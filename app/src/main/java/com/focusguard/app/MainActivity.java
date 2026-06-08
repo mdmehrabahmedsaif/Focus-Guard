@@ -29,7 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvAdminStatus, tvAccessibilityStatus;
     private View btnEnableAdmin, btnDisableAdmin, btnEnableAccessibility, btnDisableAccessibility;
     private View btnSavePassword;
-    private SwitchCompat swWhatsApp, swGoogleAssistant, swGoogleDocs, swBlockerHero, swBlockAcc, swBlockAdmin;
+    private SwitchCompat swGoogleDocs, swBlockAdmin;
     private EditText etPassword;
     private boolean isSyncingUI = false;
 
@@ -63,16 +63,9 @@ public class MainActivity extends AppCompatActivity {
         btnSavePassword        = findViewById(R.id.btnSavePassword);
         etPassword             = findViewById(R.id.etPasscode);
 
-        setupAppRow(R.id.rowWhatsApp,  "💬", "WhatsApp Updates", "Block channels & feeds");
-        setupAppRow(R.id.rowGoogleAssistant, "🎙️", "Google Assistant & App", "Block Google search & voice assistant");
-        setupAppRow(R.id.rowGoogleDocs,"📝", "Google Docs",      "Block web image search");
-        setupAppRow(R.id.rowBlockerHero,"🛡️", "Block Blocker Hero", "Block entire Blocker Hero app");
+        setupAppRow(R.id.rowGoogleDocs,"📝", "Google Docs", "Block web image search");
 
-        swWhatsApp  = findViewById(R.id.rowWhatsApp).findViewById(R.id.itemSwitch);
-        swGoogleAssistant = findViewById(R.id.rowGoogleAssistant).findViewById(R.id.itemSwitch);
         swGoogleDocs = findViewById(R.id.rowGoogleDocs).findViewById(R.id.itemSwitch);
-        swBlockerHero = findViewById(R.id.rowBlockerHero).findViewById(R.id.itemSwitch);
-        swBlockAcc   = findViewById(R.id.switchBlockAccessibility);
         swBlockAdmin = findViewById(R.id.switchBlockDeviceAdmin);
 
         if (etPassword != null) {
@@ -121,32 +114,12 @@ public class MainActivity extends AppCompatActivity {
         }));
 
         // --- App Blocking Switches ---
-        swWhatsApp.setOnCheckedChangeListener((b, checked) -> {
-            if (isSyncingUI) return;
-            pref.setWhatsAppBlocked(checked);
-            pref.setServiceActive(checked || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || pref.isBlockerHeroBlocked());
-        });
-        swGoogleAssistant.setOnCheckedChangeListener((b, checked) -> {
-            if (isSyncingUI) return;
-            pref.setGoogleAssistantBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || checked || pref.isGoogleDocsBlocked() || pref.isBlockerHeroBlocked());
-        });
         swGoogleDocs.setOnCheckedChangeListener((b, checked) -> {
             if (isSyncingUI) return;
             pref.setGoogleDocsBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isGoogleAssistantBlocked() || checked || pref.isBlockerHeroBlocked());
-        });
-        swBlockerHero.setOnCheckedChangeListener((b, checked) -> {
-            if (isSyncingUI) return;
-            pref.setBlockerHeroBlocked(checked);
-            pref.setServiceActive(pref.isWhatsAppBlocked() || pref.isGoogleAssistantBlocked() || pref.isGoogleDocsBlocked() || checked);
+            pref.setServiceActive(checked);
         });
 
-        // Independent protection locks
-        swBlockAcc.setOnCheckedChangeListener((b, checked) -> {
-            if (isSyncingUI) return;
-            pref.setAccessibilityProtected(checked);
-        });
         swBlockAdmin.setOnCheckedChangeListener((b, checked) -> {
             if (isSyncingUI) return;
             pref.setDeviceAdminProtected(checked);
@@ -165,14 +138,9 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    /**
-     * Password-only protection. No timer dependency.
-     * Always requires password to perform sensitive actions.
-     */
     private void promptPassword(Runnable onVerify) {
         String savedPass = pref.getEmergencyPassword();
         if (savedPass == null || savedPass.isEmpty()) {
-            // No password set — allow action but warn user
             Toast.makeText(this, "⚠️ Set a password first for protection", Toast.LENGTH_LONG).show();
             onVerify.run();
             return;
@@ -245,13 +213,9 @@ public class MainActivity extends AppCompatActivity {
             }
 
             // App blocking switches
-            swWhatsApp.setChecked(pref.isWhatsAppBlocked());
-            swGoogleAssistant.setChecked(pref.isGoogleAssistantBlocked());
             swGoogleDocs.setChecked(pref.isGoogleDocsBlocked());
-            swBlockerHero.setChecked(pref.isBlockerHeroBlocked());
 
-            // Protection lock switches (independent)
-            swBlockAcc.setChecked(pref.isAccessibilityProtected());
+            // Protection lock switches
             swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
         } finally {
             isSyncingUI = false;
