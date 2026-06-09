@@ -515,8 +515,17 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
+    private long lastBackActionTime = 0;
+    private void performSafeBack() {
+        long now = System.currentTimeMillis();
+        if (now - lastBackActionTime > 250) {
+            lastBackActionTime = now;
+            performGlobalAction(GLOBAL_ACTION_BACK);
+        }
+    }
+
     private void kickOutToGoogleDocsHome() {
-        performGlobalAction(GLOBAL_ACTION_BACK);
+        performSafeBack();
     }
 
     private void doGoogleDocsBlock(boolean force) {
@@ -550,24 +559,25 @@ public class BlockerService extends AccessibilityService {
 
                     if (isBrowserActive || checkDocsSearchDeep(root) || hasWebViewInTree(root, 0)) {
                         isSearchActive = true;
-                        performGlobalAction(GLOBAL_ACTION_BACK);
-                        doGoogleDocsBlock(true);
+                        showInstantZeroFlashOverlay();
+                        performSafeBack();
                     }
                 } finally {
                     root.recycle();
                 }
             }
             
-            if (elapsed > 800 && !isSearchActive) {
+            // If search is not active and 300ms has passed, stop early and remove overlay.
+            // This avoids long dark screen overlays when the block was already cleanly executed.
+            if (!isSearchActive && elapsed > 300) {
                 dismissOverlayWithAnimation();
                 isBrowserKillLoopActive = false;
                 return;
             }
             
             if (isBrowserKillLoopActive) {
-                if (elapsed < 3000) {
-                    // Ultra-fast polling: 10ms for first 400ms, then 50ms
-                    long delay = (elapsed < 400) ? 10L : 50L;
+                if (elapsed < 1500) { // Keep check loop active for 1.5 seconds max
+                    long delay = (elapsed < 300) ? 15L : 50L;
                     mainHandler.postDelayed(this, delay);
                 } else {
                     dismissOverlayWithAnimation();
@@ -588,7 +598,7 @@ public class BlockerService extends AccessibilityService {
                 isBrowserKillLoopActive = false;
                 dismissOverlayWithAnimation();
             }
-        }, 3000);
+        }, 1500);
     }
 
     private void stopBrowserKillLoop() {
@@ -617,7 +627,7 @@ public class BlockerService extends AccessibilityService {
                     if (isMonitoredSearchPackage(rootPkgStr)) {
                         isMenuWatchdogActive = false;
                         showInstantZeroFlashOverlay();
-                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        performSafeBack();
                         startBrowserKillLoop();
                         return;
                     }
@@ -626,7 +636,7 @@ public class BlockerService extends AccessibilityService {
                     if (isGoogleDocsPackage(rootPkgStr) && hasWebViewInTree(root, 0)) {
                         isMenuWatchdogActive = false;
                         showInstantZeroFlashOverlay();
-                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        performSafeBack();
                         startBrowserKillLoop();
                         return;
                     }
@@ -672,11 +682,8 @@ public class BlockerService extends AccessibilityService {
     private void doFromWebClickBlock() {
         hasBlockedCurrentSearch = false;
         stopMenuWatchdog();
-        // Show full-screen opaque overlay IMMEDIATELY
-        showInstantZeroFlashOverlay();
-        // Double BACK for maximum kill speed
-        performGlobalAction(GLOBAL_ACTION_BACK);
-        mainHandler.postDelayed(() -> performGlobalAction(GLOBAL_ACTION_BACK), 30);
+        // Close bottom sheet instantly and cleanly
+        performSafeBack();
         startBrowserKillLoop();
     }
 
