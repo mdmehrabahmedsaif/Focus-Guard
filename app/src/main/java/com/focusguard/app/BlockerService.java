@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 import android.view.WindowManager;
 import android.graphics.PixelFormat;
 import android.graphics.Color;
@@ -117,13 +118,11 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             lastWindowStateChangedTime = System.currentTimeMillis();
             if (isGoogleDocsPackage(pkgName)) {
-                AccessibilityNodeInfo root = getRootInActiveWindow();
-                if (root != null) {
-                    try {
-                        isFromWebOptionVisible = isInsertImageMenuOpen(root);
-                    } finally {
-                        root.recycle();
-                    }
+                List<AccessibilityNodeInfo> roots = getGoogleDocsRoots();
+                try {
+                    isFromWebOptionVisible = isInsertImageMenuOpen(roots);
+                } finally {
+                    for (AccessibilityNodeInfo r : roots) r.recycle();
                 }
             }
         }
@@ -131,13 +130,11 @@ public class BlockerService extends AccessibilityService {
         if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isGoogleDocsPackage(pkgName)) {
             long timeSinceStateChange = System.currentTimeMillis() - lastWindowStateChangedTime;
             if (timeSinceStateChange < 500) {
-                AccessibilityNodeInfo root = getRootInActiveWindow();
-                if (root != null) {
-                    try {
-                        isFromWebOptionVisible = isInsertImageMenuOpen(root);
-                    } finally {
-                        root.recycle();
-                    }
+                List<AccessibilityNodeInfo> roots = getGoogleDocsRoots();
+                try {
+                    isFromWebOptionVisible = isInsertImageMenuOpen(roots);
+                } finally {
+                    for (AccessibilityNodeInfo r : roots) r.recycle();
                 }
             }
         }
@@ -306,6 +303,35 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
+    private List<AccessibilityNodeInfo> getGoogleDocsRoots() {
+        List<AccessibilityNodeInfo> roots = new java.util.ArrayList<>();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            List<AccessibilityWindowInfo> windows = getWindows();
+            if (windows != null) {
+                for (AccessibilityWindowInfo win : windows) {
+                    if (win == null) continue;
+                    AccessibilityNodeInfo root = win.getRoot();
+                    if (root != null) {
+                        CharSequence pkg = root.getPackageName();
+                        String pkgName = pkg != null ? pkg.toString().toLowerCase() : "";
+                        if (isGoogleDocsPackage(pkgName)) {
+                            roots.add(root);
+                        } else {
+                            root.recycle();
+                        }
+                    }
+                }
+            }
+        }
+        if (roots.isEmpty()) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                roots.add(root);
+            }
+        }
+        return roots;
+    }
+
     private void triggerKickOut() {
         performGlobalAction(GLOBAL_ACTION_HOME);
     }
@@ -403,23 +429,25 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
-    private AccessibilityNodeInfo findFromWebListItem(AccessibilityNodeInfo root) {
-        if (root == null) return null;
+    private AccessibilityNodeInfo findFromWebListItem(List<AccessibilityNodeInfo> roots) {
         String[] webTerms = {
             "from web", "ওয়েব থেকে", "ওয়েব থেকে", "ওয়েব হতে", "ওয়েব হতে", "वेब से", 
             "desde la web", "de la web", "da web"
         };
-        for (String term : webTerms) {
-            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(term);
-            if (hits != null && !hits.isEmpty()) {
-                for (AccessibilityNodeInfo hit : hits) {
-                    if (hit == null) continue;
-                    AccessibilityNodeInfo clickableAncestor = findClickableAncestor(hit);
-                    if (clickableAncestor != null) {
-                        hit.recycle();
-                        return clickableAncestor;
+        for (AccessibilityNodeInfo root : roots) {
+            if (root == null) continue;
+            for (String term : webTerms) {
+                List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(term);
+                if (hits != null && !hits.isEmpty()) {
+                    for (AccessibilityNodeInfo hit : hits) {
+                        if (hit == null) continue;
+                        AccessibilityNodeInfo clickableAncestor = findClickableAncestor(hit);
+                        if (clickableAncestor != null) {
+                            hit.recycle();
+                            return clickableAncestor;
+                        }
+                        return hit;
                     }
-                    return hit;
                 }
             }
         }
@@ -617,49 +645,83 @@ public class BlockerService extends AccessibilityService {
         public void run() {
             if (!isMenuWatchdogActive) return;
             
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root != null) {
-                try {
-                    CharSequence rootPkg = root.getPackageName();
-                    String rootPkgStr = rootPkg != null ? rootPkg.toString().toLowerCase() : "";
-                    
-                    // If a browser is now in the foreground, block immediately
-                    if (isMonitoredSearchPackage(rootPkgStr)) {
-                        isMenuWatchdogActive = false;
-                        showInstantZeroFlashOverlay();
-                        performSafeBack();
-                        startBrowserKillLoop();
-                        return;
-                    }
-                    
-                    // Check for webview appearing within Docs
-                    if (isGoogleDocsPackage(rootPkgStr) && hasWebViewInTree(root, 0)) {
-                        isMenuWatchdogActive = false;
-                        showInstantZeroFlashOverlay();
-                        performSafeBack();
-                        startBrowserKillLoop();
-                        return;
-                    }
-
-                    // Dynamically track and update touch blocker position during bottom sheet animation
-                    if (isGoogleDocsPackage(rootPkgStr)) {
-                        if (isInsertImageMenuOpen(root)) {
-                            AccessibilityNodeInfo fromWebNode = findFromWebListItem(root);
-                            if (fromWebNode != null) {
-                                Rect rect = new Rect();
-                                fromWebNode.getBoundsInScreen(rect);
-                                fromWebNode.recycle();
-                                if (rect.width() > 0 && rect.height() > 0) {
-                                    showDocsTouchBlocker(rect);
+            List<AccessibilityNodeInfo> roots = getGoogleDocsRoots();
+            boolean isSearchActive = false;
+            boolean isMenuOpen = false;
+            
+            try {
+                // 1. Check if browser/webview is active in any window
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    List<AccessibilityWindowInfo> windows = getWindows();
+                    if (windows != null) {
+                        for (AccessibilityWindowInfo win : windows) {
+                            if (win == null) continue;
+                            AccessibilityNodeInfo winRoot = win.getRoot();
+                            if (winRoot != null) {
+                                try {
+                                    CharSequence pkg = winRoot.getPackageName();
+                                    String pkgStr = pkg != null ? pkg.toString().toLowerCase() : "";
+                                    if (isMonitoredSearchPackage(pkgStr)) {
+                                        isSearchActive = true;
+                                        break;
+                                    }
+                                    if (isGoogleDocsPackage(pkgStr) && hasWebViewInTree(winRoot, 0)) {
+                                        isSearchActive = true;
+                                        break;
+                                    }
+                                } finally {
+                                    winRoot.recycle();
                                 }
                             }
-                        } else {
-                            hideDocsTouchBlocker();
                         }
                     }
-                } finally {
-                    root.recycle();
                 }
+                
+                if (isSearchActive) {
+                    isMenuWatchdogActive = false;
+                    showInstantZeroFlashOverlay();
+                    performSafeBack();
+                    startBrowserKillLoop();
+                    return;
+                }
+
+                // 2. Check search inside Docs roots
+                for (AccessibilityNodeInfo root : roots) {
+                    if (checkDocsSearchDeep(root) || hasWebViewInTree(root, 0)) {
+                        isSearchActive = true;
+                        break;
+                    }
+                }
+                
+                if (isSearchActive) {
+                    isMenuWatchdogActive = false;
+                    showInstantZeroFlashOverlay();
+                    performSafeBack();
+                    startBrowserKillLoop();
+                    return;
+                }
+
+                // 3. Track insert image menu and update touch blocker
+                if (isInsertImageMenuOpen(roots)) {
+                    isMenuOpen = true;
+                    AccessibilityNodeInfo fromWebNode = findFromWebListItem(roots);
+                    if (fromWebNode != null) {
+                        Rect rect = new Rect();
+                        fromWebNode.getBoundsInScreen(rect);
+                        fromWebNode.recycle();
+                        if (rect.width() > 0 && rect.height() > 0) {
+                            showDocsTouchBlocker(rect);
+                        }
+                    }
+                }
+            } finally {
+                for (AccessibilityNodeInfo r : roots) {
+                    r.recycle();
+                }
+            }
+            
+            if (!isMenuOpen) {
+                hideDocsTouchBlocker();
             }
             
             if (isMenuWatchdogActive) {
@@ -718,16 +780,16 @@ public class BlockerService extends AccessibilityService {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 
-                AccessibilityNodeInfo root = getRootInActiveWindow();
-                if (root != null) {
-                    try {
+                List<AccessibilityNodeInfo> roots = getGoogleDocsRoots();
+                try {
+                    for (AccessibilityNodeInfo root : roots) {
                         if (checkDocsSearchDeep(root)) {
                             doGoogleDocsBlock(true);
-                            return;
+                            break;
                         }
-                    } finally {
-                        root.recycle();
                     }
+                } finally {
+                    for (AccessibilityNodeInfo r : roots) r.recycle();
                 }
             }
 
@@ -735,32 +797,30 @@ public class BlockerService extends AccessibilityService {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 
-                AccessibilityNodeInfo root = getRootInActiveWindow();
-                if (root != null) {
-                    try {
-                        if (isInsertImageMenuOpen(root)) {
-                            AccessibilityNodeInfo fromWebNode = findFromWebListItem(root);
-                            if (fromWebNode != null) {
-                                Rect rect = new Rect();
-                                fromWebNode.getBoundsInScreen(rect);
-                                fromWebNode.recycle();
-                                if (rect.width() > 0 && rect.height() > 0) {
-                                    showDocsTouchBlocker(rect);
-                                } else {
-                                    showDefaultDocsTouchBlocker();
-                                }
+                List<AccessibilityNodeInfo> roots = getGoogleDocsRoots();
+                try {
+                    if (isInsertImageMenuOpen(roots)) {
+                        AccessibilityNodeInfo fromWebNode = findFromWebListItem(roots);
+                        if (fromWebNode != null) {
+                            Rect rect = new Rect();
+                            fromWebNode.getBoundsInScreen(rect);
+                            fromWebNode.recycle();
+                            if (rect.width() > 0 && rect.height() > 0) {
+                                showDocsTouchBlocker(rect);
                             } else {
                                 showDefaultDocsTouchBlocker();
                             }
-                            // Start pre-emptive watchdog to catch browser opening instantly
-                            startMenuWatchdog();
                         } else {
-                            hideDocsTouchBlocker();
-                            stopMenuWatchdog();
+                            showDefaultDocsTouchBlocker();
                         }
-                    } finally {
-                        root.recycle();
+                        // Start pre-emptive watchdog to catch browser opening instantly
+                        startMenuWatchdog();
+                    } else {
+                        hideDocsTouchBlocker();
+                        stopMenuWatchdog();
                     }
+                } finally {
+                    for (AccessibilityNodeInfo r : roots) r.recycle();
                 }
             }
         }
@@ -778,15 +838,20 @@ public class BlockerService extends AccessibilityService {
         if (hasBlockedCurrentSearch) {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
                 eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-                AccessibilityNodeInfo root = getRootInActiveWindow();
-                if (root != null) {
-                    try {
-                        if (!checkDocsSearchDeep(root)) {
-                            hasBlockedCurrentSearch = false;
+                List<AccessibilityNodeInfo> roots = getGoogleDocsRoots();
+                try {
+                    boolean isSearchOpen = false;
+                    for (AccessibilityNodeInfo root : roots) {
+                        if (checkDocsSearchDeep(root)) {
+                            isSearchOpen = true;
+                            break;
                         }
-                    } finally {
-                        root.recycle();
                     }
+                    if (!isSearchOpen) {
+                        hasBlockedCurrentSearch = false;
+                    }
+                } finally {
+                    for (AccessibilityNodeInfo r : roots) r.recycle();
                 }
             }
         }
@@ -863,16 +928,16 @@ public class BlockerService extends AccessibilityService {
                 return;
             }
             
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root != null) {
-                try {
+            List<AccessibilityNodeInfo> roots = getGoogleDocsRoots();
+            try {
+                for (AccessibilityNodeInfo root : roots) {
                     if (checkDocsSearchDeep(root)) {
                         doGoogleDocsBlock(true);
                         return;
                     }
-                } finally {
-                    root.recycle();
                 }
+            } finally {
+                for (AccessibilityNodeInfo r : roots) r.recycle();
             }
         }
 
@@ -902,13 +967,11 @@ public class BlockerService extends AccessibilityService {
 
             if (!isFromWebClick) {
                 if (!isFromWebOptionVisible) {
-                    AccessibilityNodeInfo root = getRootInActiveWindow();
-                    if (root != null) {
-                        try {
-                            isFromWebOptionVisible = isInsertImageMenuOpen(root);
-                        } finally {
-                            root.recycle();
-                        }
+                    List<AccessibilityNodeInfo> roots = getGoogleDocsRoots();
+                    try {
+                        isFromWebOptionVisible = isInsertImageMenuOpen(roots);
+                    } finally {
+                        for (AccessibilityNodeInfo r : roots) r.recycle();
                     }
                 }
                 if (isFromWebOptionVisible) {
@@ -932,14 +995,16 @@ public class BlockerService extends AccessibilityService {
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                 eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
 
-                AccessibilityNodeInfo root = getRootInActiveWindow();
-                if (root == null) return;
+                List<AccessibilityNodeInfo> roots = getGoogleDocsRoots();
                 try {
-                    if (checkDocsSearchDeep(root)) {
-                        doGoogleDocsBlock();
+                    for (AccessibilityNodeInfo root : roots) {
+                        if (checkDocsSearchDeep(root)) {
+                            doGoogleDocsBlock();
+                            break;
+                        }
                     }
                 } finally {
-                    root.recycle();
+                    for (AccessibilityNodeInfo r : roots) r.recycle();
                 }
             }
         }
@@ -1098,39 +1163,42 @@ public class BlockerService extends AccessibilityService {
         return false;
     }
 
-    private boolean isInsertImageMenuOpen(AccessibilityNodeInfo root) {
-        if (root == null) return false;
-        
-        boolean hasFromWeb = false;
-        String[] webTerms = {
-            "from web", "ওয়েব থেকে", "ওয়েব থেকে", "ওয়েব হতে", "ওয়েব হতে", "वेब से", 
-            "desde la web", "de la web", "da web"
-        };
-        for (String term : webTerms) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
-            if (nodes != null && !nodes.isEmpty()) {
-                for (AccessibilityNodeInfo n : nodes) n.recycle();
-                hasFromWeb = true;
-                break;
+    private boolean isInsertImageMenuOpen(List<AccessibilityNodeInfo> roots) {
+        for (AccessibilityNodeInfo root : roots) {
+            if (root == null) continue;
+            
+            boolean hasFromWeb = false;
+            String[] webTerms = {
+                "from web", "ওয়েব থেকে", "ওয়েব থেকে", "ওয়েব হতে", "ওয়েব হতে", "वेब से", 
+                "desde la web", "de la web", "da web"
+            };
+            for (String term : webTerms) {
+                List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
+                if (nodes != null && !nodes.isEmpty()) {
+                    for (AccessibilityNodeInfo n : nodes) n.recycle();
+                    hasFromWeb = true;
+                    break;
+                }
             }
-        }
-        if (!hasFromWeb) return false;
+            if (!hasFromWeb) continue;
 
-        String[] companionTerms = {
-            "from photos", "from camera", "ফটো থেকে", "ক্যামেরা থেকে", 
-            "photos", "camera", "ফটো", "ক্যামেরা"
-        };
-        boolean hasCompanion = false;
-        for (String term : companionTerms) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
-            if (nodes != null && !nodes.isEmpty()) {
-                for (AccessibilityNodeInfo n : nodes) n.recycle();
-                hasCompanion = true;
-                break;
+            String[] companionTerms = {
+                "from photos", "from camera", "ফটো থেকে", "ক্যামেরা থেকে", 
+                "photos", "camera", "ফটো", "ক্যামেরা"
+            };
+            boolean hasCompanion = false;
+            for (String term : companionTerms) {
+                List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
+                if (nodes != null && !nodes.isEmpty()) {
+                    for (AccessibilityNodeInfo n : nodes) n.recycle();
+                    hasCompanion = true;
+                    break;
+                }
             }
+            
+            if (hasCompanion) return true;
         }
-        
-        return hasCompanion;
+        return false;
     }
 
     private boolean hasWebViewInTree(AccessibilityNodeInfo node, int depth) {
