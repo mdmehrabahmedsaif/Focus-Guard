@@ -105,14 +105,13 @@ public class BlockerService extends AccessibilityService {
             !isDocsBrowserSession &&
             !isSystemOrKeyboard) {
             
-            dismissOverlayWithAnimation();
-            stopBrowserKillLoop();
-            // Only remove touch blocker on actual app switch, not background events
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                dismissOverlayWithAnimation();
+                stopBrowserKillLoop();
                 hideDocsTouchBlocker();
                 stopMenuWatchdog();
+                isFromWebOptionVisible = false;
             }
-            isFromWebOptionVisible = false;
         }
 
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
@@ -720,12 +719,13 @@ public class BlockerService extends AccessibilityService {
                 }
             }
             
-            if (!isMenuOpen) {
+            if (isMenuOpen || isSearchActive) {
+                if (isMenuWatchdogActive) {
+                    mainHandler.postDelayed(this, 25);
+                }
+            } else {
+                isMenuWatchdogActive = false;
                 hideDocsTouchBlocker();
-            }
-            
-            if (isMenuWatchdogActive) {
-                mainHandler.postDelayed(this, 25);
             }
         }
     };
@@ -743,7 +743,6 @@ public class BlockerService extends AccessibilityService {
 
     private void doFromWebClickBlock() {
         hasBlockedCurrentSearch = false;
-        stopMenuWatchdog();
         // Close bottom sheet instantly and cleanly
         performSafeBack();
         startBrowserKillLoop();
