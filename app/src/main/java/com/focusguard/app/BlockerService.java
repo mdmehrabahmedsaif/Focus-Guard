@@ -315,16 +315,19 @@ public class BlockerService extends AccessibilityService {
     private static final int TOUCH_BLOCKER_V_PAD = 120;
 
     private void showDocsTouchBlocker(Rect buttonRect) {
-        // Full-width strip covering the "From web" row with generous vertical padding
-        // This ensures the button CANNOT be tapped even if bounds are slightly off
-        final int stripTop = Math.max(0, buttonRect.top - TOUCH_BLOCKER_V_PAD);
-        final int stripHeight = buttonRect.height() + (TOUCH_BLOCKER_V_PAD * 2);
         Runnable r = () -> {
             try {
                 WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
                 if (wm == null) return;
                 android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
                 int screenWidth = dm.widthPixels;
+                int screenHeight = dm.heightPixels;
+
+                // Position overlay starting 15px above the button top to ensure it is covered
+                // without covering the options above it (like 'From camera').
+                final int stripTop = Math.max(0, buttonRect.top - 15);
+                // Extend height from stripTop to the bottom of the screen
+                final int stripHeight = Math.max(buttonRect.height() + 30, screenHeight - stripTop);
 
                 if (docsTouchBlocker == null) {
                     docsTouchBlocker = new View(BlockerService.this);
@@ -461,7 +464,8 @@ public class BlockerService extends AccessibilityService {
                 android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
                 int screenWidth = dm.widthPixels;
                 int screenHeight = dm.heightPixels;
-                int heightPx = (int) (100 * dm.density);
+                // Increase default height to 250dp to ensure fallback coverage
+                int heightPx = (int) (250 * dm.density);
                 int topPx = screenHeight - heightPx;
 
                 if (docsTouchBlocker == null) {
@@ -625,6 +629,23 @@ public class BlockerService extends AccessibilityService {
                         performGlobalAction(GLOBAL_ACTION_BACK);
                         startBrowserKillLoop();
                         return;
+                    }
+
+                    // Dynamically track and update touch blocker position during bottom sheet animation
+                    if (isGoogleDocsPackage(rootPkgStr)) {
+                        if (isInsertImageMenuOpen(root)) {
+                            AccessibilityNodeInfo fromWebNode = findFromWebListItem(root);
+                            if (fromWebNode != null) {
+                                Rect rect = new Rect();
+                                fromWebNode.getBoundsInScreen(rect);
+                                fromWebNode.recycle();
+                                if (rect.width() > 0 && rect.height() > 0) {
+                                    showDocsTouchBlocker(rect);
+                                }
+                            }
+                        } else {
+                            hideDocsTouchBlocker();
+                        }
                     }
                 } finally {
                     root.recycle();
