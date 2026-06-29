@@ -7,7 +7,7 @@
             "default": true
         }
     ],
-    "java.import.gradle.wrapper.enabled": true,
+    "java.import.gradle.wrapper.enabled": false,
     "java.import.gradle.version": "9.4.1",
     "java.configuration.updateBuildConfiguration": "automatic"
 }
