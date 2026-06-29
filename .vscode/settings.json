@@ -1,0 +1,13 @@
+{
+    "java.jdt.ls.java.home": "C:\\Users\\saifl\\.jdks\\temurin-17",
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-17",
+            "path": "C:\\Users\\saifl\\.jdks\\temurin-17",
+            "default": true
+        }
+    ],
+    "java.import.gradle.wrapper.enabled": true,
+    "java.import.gradle.version": "9.4.1",
+    "java.configuration.updateBuildConfiguration": "automatic"
+}

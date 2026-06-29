@@ -1,7 +1,0 @@
-com.focusguard.app-pngs-0 E:\FocusGuard\FocusGuard\app\build\generated\res\pngs\debug
-com.focusguard.app-resValues-1 E:\FocusGuard\FocusGuard\app\build\generated\res\resValues\debug
-com.focusguard.app-packageDebugResources-2 E:\FocusGuard\FocusGuard\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
-com.focusguard.app-packageDebugResources-3 E:\FocusGuard\FocusGuard\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
-com.focusguard.app-merged_res-4 E:\FocusGuard\FocusGuard\app\build\intermediates\merged_res\debug
-com.focusguard.app-debug-5 E:\FocusGuard\FocusGuard\app\src\debug\res
-com.focusguard.app-main-6 E:\FocusGuard\FocusGuard\app\src\main\res

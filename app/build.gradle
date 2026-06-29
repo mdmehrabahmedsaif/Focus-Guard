@@ -12,7 +12,7 @@ android {
         targetSdk 33
         versionCode 13
         versionName "1.8.2"
-        resConfigs "en", "bn"
+        resourceConfigurations += ['en', 'bn']
     }
 
     buildTypes {
