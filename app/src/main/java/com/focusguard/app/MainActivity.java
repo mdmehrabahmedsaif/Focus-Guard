@@ -1,208 +1,245 @@
 package com.focusguard.app;
 
-import android.app.Activity;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.InputType;
 import android.view.View;
-import android.widget.LinearLayout;
-import android.widget.Switch;
+import android.view.accessibility.AccessibilityManager;
+import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
-public class MainActivity extends Activity {
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
+import androidx.core.content.ContextCompat;
 
-    private static final String PREFS_NAME = "focusguard_prefs";
-    private static final String KEY_BLOCKING_ENABLED = "blocking_enabled";
-    private static final int REQUEST_CODE_ENABLE_ADMIN = 1001;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
-    // UI Elements
-    private LinearLayout accessibilityStatusBadge;
-    private View accessibilityStatusDot;
-    private TextView accessibilityStatusText;
-    private TextView btnOpenAccessibility;
+import java.util.List;
 
-    private Switch switchBlocking;
-    private TextView blockingStatusText;
+public class MainActivity extends AppCompatActivity {
 
-    private LinearLayout adminStatusBadge;
-    private View adminStatusDot;
-    private TextView adminStatusText;
-    private TextView btnToggleAdmin;
-
-    private SharedPreferences prefs;
-    private DevicePolicyManager devicePolicyManager;
+    private PreferenceManager pref;
+    private DevicePolicyManager dpm;
     private ComponentName adminComponent;
+
+    // Core views
+    private TextView tvOverallStatusText, tvAccessibilityStatusText, tvAdminStatusText;
+    private View statusGlowCircle, accessibilityStatusDot, adminStatusDot;
+    private View btnEnableAccessibility, btnDisableAccessibility, btnEnableAdmin, btnDisableAdmin;
+    private View btnSavePassword;
+    private SwitchCompat swGoogleDocs, swBlockAcc, swBlockAdmin;
+    private EditText etPassword;
+
+    private static final int REQ_ADMIN = 101;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        try {
+            setContentView(R.layout.activity_main);
 
-        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        devicePolicyManager = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
-        adminComponent = new ComponentName(this, FocusGuardDeviceAdmin.class);
+            pref = new PreferenceManager(this);
+            dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            adminComponent = new ComponentName(this, FocusGuardDeviceAdmin.class);
 
-        initViews();
-        setupListeners();
+            initViews();
+            setupListeners();
+            syncUIWithState();
+        } catch (Exception e) {
+            Toast.makeText(this, "Init Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void initViews() {
+        tvOverallStatusText = findViewById(R.id.tvOverallStatusText);
+        statusGlowCircle = findViewById(R.id.statusGlowCircle);
+
+        tvAccessibilityStatusText = findViewById(R.id.tvAccessibilityStatusText);
+        accessibilityStatusDot = findViewById(R.id.accessibilityStatusDot);
+        btnEnableAccessibility = findViewById(R.id.btnEnableAccessibility);
+        btnDisableAccessibility = findViewById(R.id.btnDisableAccessibility);
+
+        tvAdminStatusText = findViewById(R.id.tvAdminStatusText);
+        adminStatusDot = findViewById(R.id.adminStatusDot);
+        btnEnableAdmin = findViewById(R.id.btnEnableAdmin);
+        btnDisableAdmin = findViewById(R.id.btnDisableAdmin);
+
+        swGoogleDocs = findViewById(R.id.swGoogleDocs);
+        swBlockAcc = findViewById(R.id.swBlockAccessibility);
+        swBlockAdmin = findViewById(R.id.swBlockDeviceAdmin);
+
+        btnSavePassword = findViewById(R.id.btnSavePassword);
+        etPassword = findViewById(R.id.etPasscode);
+
+        if (etPassword != null) {
+            etPassword.setText(pref.getEmergencyPassword());
+        }
+    }
+
+    private void setupListeners() {
+        // --- Accessibility Service Deployment ---
+        btnEnableAccessibility.setOnClickListener(v -> {
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            Toast.makeText(this, "Find and enable Focus Guard service", Toast.LENGTH_LONG).show();
+        });
+
+        btnDisableAccessibility.setOnClickListener(v -> promptPassword(() -> {
+            if (FocusGuardService.getInstance() != null) {
+                FocusGuardService.getInstance().disableService();
+                Toast.makeText(this, "Service stopped", Toast.LENGTH_SHORT).show();
+            }
+        }));
+
+        // --- Device Admin Deployment ---
+        btnEnableAdmin.setOnClickListener(v -> {
+            Intent i = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+            i.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
+            i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Required for uninstall protection.");
+            startActivityForResult(i, REQ_ADMIN);
+        });
+
+        btnDisableAdmin.setOnClickListener(v -> promptPassword(() -> {
+            try {
+                dpm.removeActiveAdmin(adminComponent);
+                Toast.makeText(this, "Admin removed", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }));
+
+        // --- Switches ---
+        swGoogleDocs.setOnCheckedChangeListener((b, checked) -> {
+            pref.setGoogleDocsBlocked(checked);
+            pref.setServiceActive(checked || pref.isAccessibilityProtected() || pref.isDeviceAdminProtected());
+        });
+
+        swBlockAcc.setOnCheckedChangeListener((b, checked) -> {
+            pref.setAccessibilityProtected(checked);
+            pref.setServiceActive(checked || pref.isGoogleDocsBlocked() || pref.isDeviceAdminProtected());
+        });
+
+        swBlockAdmin.setOnCheckedChangeListener((b, checked) -> {
+            pref.setDeviceAdminProtected(checked);
+            pref.setServiceActive(checked || pref.isGoogleDocsBlocked() || pref.isAccessibilityProtected());
+        });
+
+        // --- Save Password ---
+        btnSavePassword.setOnClickListener(v -> {
+            if (etPassword == null) return;
+            String pass = etPassword.getText().toString().trim();
+            if (pass.isEmpty()) {
+                Toast.makeText(this, "❌ Password cannot be empty", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            pref.setEmergencyPassword(pass);
+            Toast.makeText(this, "✅ Password saved successfully", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void promptPassword(Runnable onVerify) {
+        String savedPass = pref.getEmergencyPassword();
+        if (savedPass == null || savedPass.isEmpty()) {
+            Toast.makeText(this, "⚠️ Set a password first for protection", Toast.LENGTH_LONG).show();
+            onVerify.run();
+            syncUIWithState();
+            return;
+        }
+
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        input.setHint("Enter password");
+        input.setPadding(48, 24, 48, 24);
+
+        new MaterialAlertDialogBuilder(this)
+            .setTitle("🛡️ Verification Required")
+            .setMessage("Please enter your emergency password to halt protection.")
+            .setView(input)
+            .setPositiveButton("VERIFY", (dialog, which) -> {
+                String entered = input.getText().toString();
+                if (!entered.isEmpty() && entered.equals(savedPass)) {
+                    onVerify.run();
+                    syncUIWithState();
+                } else {
+                    Toast.makeText(this, "❌ Incorrect password", Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setNegativeButton("CANCEL", null)
+            .show();
+    }
+
+    private boolean isAccessibilityServiceEnabled() {
+        AccessibilityManager am = (AccessibilityManager) getSystemService(Context.ACCESSIBILITY_SERVICE);
+        List<AccessibilityServiceInfo> services = am.getEnabledAccessibilityServiceList(
+                AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+        if (services == null) return false;
+        for (AccessibilityServiceInfo s : services) {
+            if (s.getResolveInfo().serviceInfo.packageName.equals(getPackageName())) return true;
+        }
+        return false;
+    }
+
+    private void syncUIWithState() {
+        if (isFinishing()) return;
+
+        boolean adminOn = dpm.isAdminActive(adminComponent);
+        boolean serviceOn = isAccessibilityServiceEnabled();
+
+        // 1. Overall Status Header
+        if (serviceOn) {
+            tvOverallStatusText.setText("PROTECTION ACTIVE");
+            tvOverallStatusText.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
+            statusGlowCircle.setBackgroundResource(R.drawable.shape_circle_green);
+        } else {
+            tvOverallStatusText.setText("PROTECTION OFFLINE");
+            tvOverallStatusText.setTextColor(ContextCompat.getColor(this, R.color.danger_rose));
+            statusGlowCircle.setBackgroundResource(R.drawable.shape_circle_red);
+        }
+
+        // 2. Accessibility Status Card
+        if (serviceOn) {
+            tvAccessibilityStatusText.setText("ACTIVE");
+            tvAccessibilityStatusText.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
+            accessibilityStatusDot.setBackgroundResource(R.drawable.shape_circle_green);
+            btnEnableAccessibility.setVisibility(View.GONE);
+            btnDisableAccessibility.setVisibility(View.VISIBLE);
+        } else {
+            tvAccessibilityStatusText.setText("OFFLINE");
+            tvAccessibilityStatusText.setTextColor(ContextCompat.getColor(this, R.color.danger_rose));
+            accessibilityStatusDot.setBackgroundResource(R.drawable.shape_circle_red);
+            btnEnableAccessibility.setVisibility(View.VISIBLE);
+            btnDisableAccessibility.setVisibility(View.GONE);
+        }
+
+        // 3. Device Admin Status Card
+        if (adminOn) {
+            tvAdminStatusText.setText("ACTIVE");
+            tvAdminStatusText.setTextColor(ContextCompat.getColor(this, R.color.success_emerald));
+            adminStatusDot.setBackgroundResource(R.drawable.shape_circle_green);
+            btnEnableAdmin.setVisibility(View.GONE);
+            btnDisableAdmin.setVisibility(View.VISIBLE);
+        } else {
+            tvAdminStatusText.setText("OFFLINE");
+            tvAdminStatusText.setTextColor(ContextCompat.getColor(this, R.color.danger_rose));
+            adminStatusDot.setBackgroundResource(R.drawable.shape_circle_red);
+            btnEnableAdmin.setVisibility(View.VISIBLE);
+            btnDisableAdmin.setVisibility(View.GONE);
+        }
+
+        // 4. Feature Switches
+        swGoogleDocs.setChecked(pref.isGoogleDocsBlocked());
+        swBlockAcc.setChecked(pref.isAccessibilityProtected());
+        swBlockAdmin.setChecked(pref.isDeviceAdminProtected());
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        refreshAllStatuses();
-    }
-
-    private void initViews() {
-        // Accessibility section
-        accessibilityStatusBadge = findViewById(R.id.accessibility_status_badge);
-        accessibilityStatusDot = findViewById(R.id.accessibility_status_dot);
-        accessibilityStatusText = findViewById(R.id.accessibility_status_text);
-        btnOpenAccessibility = findViewById(R.id.btn_open_accessibility);
-
-        // Blocking section
-        switchBlocking = findViewById(R.id.switch_blocking);
-        blockingStatusText = findViewById(R.id.blocking_status_text);
-
-        // Device Admin section
-        adminStatusBadge = findViewById(R.id.admin_status_badge);
-        adminStatusDot = findViewById(R.id.admin_status_dot);
-        adminStatusText = findViewById(R.id.admin_status_text);
-        btnToggleAdmin = findViewById(R.id.btn_toggle_admin);
-    }
-
-    private void setupListeners() {
-        // Open Accessibility Settings
-        btnOpenAccessibility.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-                startActivity(intent);
-            }
-        });
-
-        // Blocking toggle
-        boolean blockingEnabled = prefs.getBoolean(KEY_BLOCKING_ENABLED, true);
-        switchBlocking.setChecked(blockingEnabled);
-
-        switchBlocking.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            prefs.edit().putBoolean(KEY_BLOCKING_ENABLED, isChecked).apply();
-            updateBlockingStatus(isChecked);
-        });
-
-        // Device Admin toggle
-        btnToggleAdmin.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (isDeviceAdminActive()) {
-                    // Disable Device Admin
-                    devicePolicyManager.removeActiveAdmin(adminComponent);
-                    refreshAdminStatus();
-                } else {
-                    // Enable Device Admin
-                    Intent intent = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
-                    intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent);
-                    intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                            getString(R.string.device_admin_explanation));
-                    startActivityForResult(intent, REQUEST_CODE_ENABLE_ADMIN);
-                }
-            }
-        });
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CODE_ENABLE_ADMIN) {
-            refreshAdminStatus();
-        }
-    }
-
-    private void refreshAllStatuses() {
-        refreshAccessibilityStatus();
-        updateBlockingStatus(prefs.getBoolean(KEY_BLOCKING_ENABLED, true));
-        refreshAdminStatus();
-    }
-
-    private void refreshAccessibilityStatus() {
-        boolean isEnabled = isAccessibilityServiceEnabled();
-
-        if (isEnabled) {
-            accessibilityStatusDot.setBackgroundResource(R.drawable.shape_circle_green);
-            accessibilityStatusText.setText(R.string.status_active);
-            accessibilityStatusText.setTextColor(0xFF10B981);
-            accessibilityStatusBadge.setBackgroundResource(R.drawable.shape_status_badge_active);
-            btnOpenAccessibility.setText("✓ Accessibility Enabled");
-            btnOpenAccessibility.setTextColor(0xFF10B981);
-            btnOpenAccessibility.setBackgroundResource(R.drawable.shape_button_outline_green);
-        } else {
-            accessibilityStatusDot.setBackgroundResource(R.drawable.shape_circle_red);
-            accessibilityStatusText.setText(R.string.status_inactive);
-            accessibilityStatusText.setTextColor(0xFFF43F5E);
-            accessibilityStatusBadge.setBackgroundResource(R.drawable.shape_status_badge_inactive);
-            btnOpenAccessibility.setText(R.string.btn_open_accessibility);
-            btnOpenAccessibility.setTextColor(0xFF38BDF8);
-            btnOpenAccessibility.setBackgroundResource(R.drawable.shape_button_outline_blue);
-        }
-    }
-
-    private void updateBlockingStatus(boolean isEnabled) {
-        if (isEnabled) {
-            blockingStatusText.setText(R.string.blocking_enabled);
-            blockingStatusText.setTextColor(0xFF10B981);
-        } else {
-            blockingStatusText.setText(R.string.blocking_disabled);
-            blockingStatusText.setTextColor(0xFFF43F5E);
-        }
-    }
-
-    private void refreshAdminStatus() {
-        boolean isActive = isDeviceAdminActive();
-
-        if (isActive) {
-            adminStatusDot.setBackgroundResource(R.drawable.shape_circle_green);
-            adminStatusText.setText(R.string.status_active);
-            adminStatusText.setTextColor(0xFF10B981);
-            adminStatusBadge.setBackgroundResource(R.drawable.shape_status_badge_active);
-            btnToggleAdmin.setText(R.string.btn_disable_admin);
-            btnToggleAdmin.setTextColor(0xFFF43F5E);
-            btnToggleAdmin.setBackgroundResource(R.drawable.shape_button_outline_red);
-        } else {
-            adminStatusDot.setBackgroundResource(R.drawable.shape_circle_red);
-            adminStatusText.setText(R.string.status_inactive);
-            adminStatusText.setTextColor(0xFFF43F5E);
-            adminStatusBadge.setBackgroundResource(R.drawable.shape_status_badge_inactive);
-            btnToggleAdmin.setText(R.string.btn_enable_admin);
-            btnToggleAdmin.setTextColor(0xFF818CF8);
-            btnToggleAdmin.setBackgroundResource(R.drawable.shape_button_outline_purple);
-        }
-    }
-
-    /**
-     * Check if our AccessibilityService is enabled
-     */
-    private boolean isAccessibilityServiceEnabled() {
-        String serviceName = getPackageName() + "/" + FocusGuardService.class.getCanonicalName();
-        try {
-            String enabledServices = Settings.Secure.getString(
-                    getContentResolver(),
-                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-            if (enabledServices != null) {
-                return enabledServices.contains(serviceName);
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-        return false;
-    }
-
-    /**
-     * Check if Device Admin is active
-     */
-    private boolean isDeviceAdminActive() {
-        return devicePolicyManager.isAdminActive(adminComponent);
+        syncUIWithState();
     }
 }

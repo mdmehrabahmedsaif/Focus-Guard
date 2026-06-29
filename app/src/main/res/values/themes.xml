@@ -1,7 +1,11 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Theme.FocusGuard" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.FocusGuard" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/bg_midnight</item>
+        <item name="colorPrimaryDark">@color/bg_midnight</item>
+        <item name="colorAccent">@color/neon_blue</item>
         <item name="android:statusBarColor">@color/bg_midnight</item>
         <item name="android:windowBackground">@color/bg_midnight</item>
+        <item name="materialButtonStyle">@style/Widget.MaterialComponents.Button</item>
     </style>
 </resources>

@@ -51,11 +51,10 @@ jobs:
           **Build Date:** ${{ steps.version.outputs.DATE }}
 
           ### What's included in this release:
-          - 🛡️ **Blocker Hero Settings Blocker:** Instantly blocks access to the Settings option inside the Blocker Hero app (`com.blockerhero`) and redirects the user to the app's home "Blocking" tab (instead of kicking out to the system Home screen). All option rows on the settings screen are fully blocked. Features a dedicated ON/OFF toggle switch in FocusGuard settings.
-          - 🎙️ **Google Assistant Blocker:** Prevents opening Google Assistant as a standalone app or as a system overlay.
-          - 📝 **Google Docs Blocker (v1.7.0):** Instantly kicks you out to the Google Docs Home screen (file list) upon tapping "From Web".
-          - ⚡ **Zero-Lag Typing:** Rewrote the background accessibility service checking logic to eliminate recursive node traversals during typing, providing 100% smooth typing and editing.
-          - 🛡️ **WhatsApp & Core Security:** Sub-0.1s instant block response for WhatsApp Channels/Updates, Device Admin, and Accessibility Settings. (YouTube Shorts, Instagram Reels, Private DNS settings, and the custom Accessibility Blocker page have been removed).
+          - 📝 **Google Docs Blocker:** Instantly blocks "From web" web image searches inside documents using a reactive watchdog loop and Ghost Shield overlay.
+          - ⚙️ **Accessibility Lock:** Blocks accessing FocusGuard settings in the system Accessibility settings to prevent disabling the service.
+          - 🔒 **Device Admin Lock & Uninstall Protection:** Blocks deactivating device administrator rights and restricts uninstallation of FocusGuard.
+          - ⚡ **Minimal Performance Build:** WhatsApp, YouTube Shorts, Instagram Reels, Google Assistant, Google App search, and Private DNS settings blockers have been completely removed for maximum native performance and zero-lag typing.
 
           ### How to install:
           1. Download `app-debug.apk` below

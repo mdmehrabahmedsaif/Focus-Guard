@@ -20,10 +20,18 @@
             </intent-filter>
         </activity>
 
-        <!-- Accessibility Service for blocking Google Docs "From web" -->
+        <activity
+            android:name=".BlockActivity"
+            android:theme="@style/Theme.FocusGuard"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="false" />
+
+        <!-- Accessibility Service for blocking -->
         <service
             android:name=".FocusGuardService"
-            android:exported="false"
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
