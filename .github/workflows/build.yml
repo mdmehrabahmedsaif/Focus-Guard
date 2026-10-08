@@ -51,6 +51,7 @@ jobs:
           **Build Date:** ${{ steps.version.outputs.DATE }}
 
           ### What's included in this release:
+          - 🛠️ **Google Docs Fix:** Fixed false positive blocking on "Add shortcut to Drive" and Google Drive file navigation/picker dialogs.
           - 📝 **Google Docs Blocker:** Instantly blocks "From web" web image searches inside documents using a reactive watchdog loop and Ghost Shield overlay.
           - ⚙️ **Accessibility Lock:** Blocks accessing FocusGuard settings in the system Accessibility settings to prevent disabling the service.
           - 🔒 **Device Admin Lock & Uninstall Protection:** Blocks deactivating device administrator rights and restricts uninstallation of FocusGuard.

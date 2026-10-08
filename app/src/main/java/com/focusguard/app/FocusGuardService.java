@@ -505,26 +505,92 @@ public class FocusGuardService extends AccessibilityService {
     }
 
     private boolean isGoogleDocsSearchText(String text) {
-        String s = text.toLowerCase();
+        if (text == null) return false;
+        String s = text.toLowerCase().trim();
         return s.contains("search your docs and the web") ||
                s.contains("আপনার ডকুমেন্টস এবং ওয়েব") ||
                s.contains("search images") ||
                s.contains("ছবি খুঁজুন") ||
                s.contains("find images, facts and text") ||
-               s.contains("search directly in docs") ||
+               s.contains("search web images") ||
+               s.contains("search google images") ||
+               s.contains("google image search") ||
                s.contains("search web") ||
                s.contains("ওয়েব অনুসন্ধান") ||
                s.contains("ওয়েবে খুঁজুন") ||
-               s.contains("search query") ||
-               s.contains("ওয়েব অনুসন্ধান") ||
                s.contains("ওয়েব সার্চ") ||
-               s.contains("ওয়েব অনুসন্ধান") ||
                s.contains("ছবি অনুসন্ধান") ||
                s.contains("ছবি সার্চ") ||
                s.contains("গুগল অনুসন্ধান") ||
                s.contains("গুগল সার্চ") ||
+               s.contains("গুগল ইমেজ") ||
                s.contains("google search") ||
                s.contains("search the web");
+    }
+
+    private boolean isSafeText(String s) {
+        if (s == null || s.isEmpty()) return false;
+        return s.contains("add shortcut") ||
+               s.contains("shortcut to drive") ||
+               s.contains("ড্রাইভে শর্টকাট") ||
+               s.contains("শর্টকাট যোগ করুন") ||
+               s.contains("my drive") ||
+               s.contains("আমার ড্রাইভ") ||
+               s.contains("shared with me") ||
+               s.contains("আমার সাথে শেয়ার") ||
+               s.contains("computers") ||
+               s.contains("কম্পিউটার") ||
+               s.contains("starred") ||
+               s.contains("তারকাচিহ্নিত") ||
+               s.contains("move here") ||
+               s.contains("move to") ||
+               s.contains("এখানে সরান") ||
+               s.contains("সরান") ||
+               s.contains("select folder") ||
+               s.contains("choose folder") ||
+               s.contains("ফোল্ডার নির্বাচন") ||
+               s.contains("save to drive") ||
+               s.contains("ড্রাইভে সংরক্ষণ") ||
+               s.contains("open from drive") ||
+               s.contains("ড্রাইভ থেকে খুলুন") ||
+               s.contains("find and replace") ||
+               s.contains("find & replace") ||
+               s.contains("খুঁজুন ও প্রতিস্থাপন") ||
+               s.contains("প্রতিস্থাপন করুন");
+    }
+
+    private boolean isSafeDocsOrDriveScreen(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+
+        String[] safeTerms = {
+            "add shortcut to drive", "add shortcut", "shortcut to drive",
+            "ড্রাইভে শর্টকাট যোগ করুন", "শর্টকাট যোগ করুন", "ড্রাইভে শর্টকাট",
+            "my drive", "আমার ড্রাইভ",
+            "shared with me", "আমার সাথে শেয়ার করা", "আমার সাথে শেয়ার করা হয়েছে",
+            "computers", "কম্পিউটার",
+            "starred", "তারকাচিহ্নিত",
+            "move here", "এখানে সরান",
+            "move to", "সরান",
+            "select folder", "choose folder", "ফোল্ডার নির্বাচন করুন",
+            "save to drive", "ড্রাইভে সংরক্ষণ করুন",
+            "open from drive", "ড্রাইভ থেকে খুলুন",
+            "find and replace", "find & replace", "খুঁজুন ও প্রতিস্থাপন করুন", "খুঁজুন এবং প্রতিস্থাপন",
+            "replace all", "সব প্রতিস্থাপন করুন",
+            "document outline", "ডকুমেন্টের রূপরেখা",
+            "word count", "শব্দ গণনা",
+            "page setup", "পৃষ্ঠা সেটআপ",
+            "insert link", "edit link", "লিঙ্ক যোগ করুন", "লিঙ্ক সম্পাদনা করুন"
+        };
+
+        for (String term : safeTerms) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(term);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo n : hits) n.recycle();
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void handleGoogleDocs(AccessibilityEvent event, int eventType, String pkgName) {
@@ -563,6 +629,16 @@ public class FocusGuardService extends AccessibilityService {
                 if (evClass != null) {
                     String clsStr = evClass.toString();
                     if (!clsStr.contains("Editor") && !clsStr.contains("MainActivity") && !clsStr.contains("HomeActivity")) {
+                        AccessibilityNodeInfo root = getRootInActiveWindow();
+                        if (root != null) {
+                            try {
+                                if (isSafeDocsOrDriveScreen(root)) {
+                                    return;
+                                }
+                            } finally {
+                                root.recycle();
+                            }
+                        }
                         doGoogleDocsBlock(true);
                         return;
                     }
@@ -725,8 +801,13 @@ public class FocusGuardService extends AccessibilityService {
     private boolean hasFAB = false;
     private boolean hasRecyclerView = false;
     private boolean hasTextSelection = false;
+    private boolean isSafeScreen = false;
 
     private boolean checkDocsSearchDeep(AccessibilityNodeInfo root) {
+        if (isSafeDocsOrDriveScreen(root)) {
+            return false;
+        }
+
         isWebSearchExplicit = false;
         hasSearchIcon = false;
         hasFormattingBar = false;
@@ -739,8 +820,12 @@ public class FocusGuardService extends AccessibilityService {
         hasFAB = false;
         hasRecyclerView = false;
         hasTextSelection = false;
+        isSafeScreen = false;
         
         boolean matched = scanDocsUIOptimized(root, 0);
+        if (isSafeScreen) {
+            return false;
+        }
         if (matched) return true;
         
         if (hasTextSelection) {
@@ -751,20 +836,16 @@ public class FocusGuardService extends AccessibilityService {
             return false;
         }
         
-        if (hasWebView && hasLeftArrow) {
-            return true;
-        }
-        
         if (hasWebView) {
             return true;
         }
         
-        if (hasLeftArrow && hasEditText) {
+        if (isWebSearchExplicit || hasWebDomain) {
             return true;
         }
         
-        if (isWebSearchExplicit || hasSearchIcon || hasWebDomain) {
-            if (hasLeftArrow || hasEditText) {
+        if (isBrowserKillLoopActive) {
+            if (hasLeftArrow && (hasEditText || hasSearchIcon || hasProgressBar)) {
                 return true;
             }
         }
@@ -787,6 +868,10 @@ public class FocusGuardService extends AccessibilityService {
         CharSequence txt = node.getText();
         if (txt != null) {
             String s = txt.toString().toLowerCase().trim();
+            if (isSafeText(s)) {
+                isSafeScreen = true;
+                return false;
+            }
             if (isGoogleDocsSearchText(s)) {
                 isWebSearchExplicit = true;
             }
@@ -795,7 +880,7 @@ public class FocusGuardService extends AccessibilityService {
                     hasWebDomain = true;
                 }
             }
-            if (s.equals("search") || s.equals("অনুসন্ধান") || s.equals("সার্চ") || s.equals("search web") || s.equals("ওয়েবে খুঁজুন") || s.equals("search query") || s.equals("clear query") || s.equals("clear text") || s.equals("clear")) {
+            if (s.equals("search") || s.equals("অনুসন্ধান") || s.equals("সার্চ") || s.equals("search web") || s.equals("ওয়েবে খুঁজুন")) {
                 hasSearchIcon = true;
             }
             if (s.equals("navigate up") || s.equals("close") || s.equals("back") || s.equals("উপরে নেভিগেট করুন") || s.equals("বন্ধ করুন") || s.equals("ফিরে যান") || s.equals("ব্যাক")) {
@@ -814,16 +899,20 @@ public class FocusGuardService extends AccessibilityService {
         CharSequence desc = node.getContentDescription();
         if (desc != null) {
             String s = desc.toString().toLowerCase().trim();
+            if (isSafeText(s)) {
+                isSafeScreen = true;
+                return false;
+            }
             if (isGoogleDocsSearchText(s)) {
                 isWebSearchExplicit = true;
             }
-            if (s.contains("search") || s.contains("অনুসন্ধান") || s.contains("সার্চ") || s.contains("clear") || s.contains("query")) {
+            if (s.contains("search") || s.contains("অনুসন্ধান") || s.contains("সার্চ")) {
                 hasSearchIcon = true;
             }
             if (s.equals("bold") || s.equals("বোল্ড") || s.equals("italic") || s.equals("ইটালিক") || s.equals("underline") || s.equals("আন্ডারলাইন") || s.equals("edit") || s.equals("সম্পাদনা করুন")) {
                 hasFormattingBar = true;
             }
-            if (s.contains("navigate") || s.contains("close") || s.contains("back") || s.contains("উপরে") || s.contains("বন্ধ") || s.contains("ফিরে") || s.contains("ব্যাক") || s.contains("arrow") || s.contains("left") || s.contains("collapse") || s.contains("cancel")) {
+            if (s.contains("navigate") || s.contains("close") || s.contains("back") || s.contains("উপরে") || s.contains("বন্ধ") || s.contains("ফিরে") || s.contains("ব্যাক") || s.contains("arrow") || s.contains("left") || s.contains("collapse")) {
                 hasLeftArrow = true;
             }
             if (s.contains("drawer") || s.contains("menu") || s.contains("navigation") || s.contains("মেনু") || s.contains("ড্রয়ার")) {
@@ -839,9 +928,10 @@ public class FocusGuardService extends AccessibilityService {
             }
         }
         
+        if (isSafeScreen) return false;
         if (isWebSearchExplicit) return true;
         if (hasLeftArrow && hasWebView) return true;
-        if (hasLeftArrow && hasEditText && hasProgressBar) return true;
+        if (isBrowserKillLoopActive && hasLeftArrow && hasEditText && hasProgressBar) return true;
         
         int childCount = node.getChildCount();
         for (int i = 0; i < childCount; i++) {
