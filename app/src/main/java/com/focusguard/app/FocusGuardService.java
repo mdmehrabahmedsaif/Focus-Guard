@@ -736,8 +736,12 @@ public class FocusGuardService extends AccessibilityService {
 
             String eventTxt = getEventText(event).toLowerCase();
             if (eventTxt.contains("from web") || 
+                eventTxt.contains("search the web") ||
+                eventTxt.contains("search web") ||
+                eventTxt.contains("web search") ||
                 eventTxt.contains("ওয়েব থেকে") || eventTxt.contains("ওয়েব থেকে") ||
                 eventTxt.contains("ওয়েব হতে") || eventTxt.contains("ওয়েব হতে") ||
+                eventTxt.contains("ওয়েবে খুঁজুন") || eventTxt.contains("ওয়েব অনুসন্ধান") ||
                 eventTxt.contains("वेब से") || 
                 eventTxt.contains("desde la web") || eventTxt.contains("de la web") ||
                 eventTxt.contains("da web")) {
@@ -759,6 +763,11 @@ public class FocusGuardService extends AccessibilityService {
                 if (source == null) {
                     isFromWebClick = true;
                 } else {
+                    String fullText = (getEventText(event) + " " + (source.getText() != null ? source.getText() : "")).toLowerCase();
+                    if (!fullText.contains("photo") && !fullText.contains("camera") &&
+                        !fullText.contains("ফটো") && !fullText.contains("ক্যামেরা")) {
+                        isFromWebClick = true;
+                    }
                     source.recycle();
                 }
             }
@@ -836,16 +845,20 @@ public class FocusGuardService extends AccessibilityService {
             return false;
         }
         
+        if (hasWebView && hasLeftArrow) {
+            return true;
+        }
+
         if (hasWebView) {
             return true;
         }
         
-        if (isWebSearchExplicit || hasWebDomain) {
+        if (hasLeftArrow && hasEditText) {
             return true;
         }
         
-        if (isBrowserKillLoopActive) {
-            if (hasLeftArrow && (hasEditText || hasSearchIcon || hasProgressBar)) {
+        if (isWebSearchExplicit || hasSearchIcon || hasWebDomain) {
+            if (hasLeftArrow || hasEditText) {
                 return true;
             }
         }
@@ -931,7 +944,7 @@ public class FocusGuardService extends AccessibilityService {
         if (isSafeScreen) return false;
         if (isWebSearchExplicit) return true;
         if (hasLeftArrow && hasWebView) return true;
-        if (isBrowserKillLoopActive && hasLeftArrow && hasEditText && hasProgressBar) return true;
+        if (hasLeftArrow && hasEditText && hasProgressBar) return true;
         
         int childCount = node.getChildCount();
         for (int i = 0; i < childCount; i++) {
@@ -989,8 +1002,12 @@ public class FocusGuardService extends AccessibilityService {
         if (txt != null) {
             String s = txt.toString().toLowerCase();
             if (s.contains("from web") || 
+                s.contains("search the web") ||
+                s.contains("search web") ||
+                s.contains("web search") ||
                 s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
                 s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
+                s.contains("ওয়েবে খুঁজুন") || s.contains("ওয়েব অনুসন্ধান") ||
                 s.contains("वेब से") || 
                 s.contains("desde la web") || s.contains("de la web") ||
                 s.contains("da web")) return true;
@@ -1000,8 +1017,12 @@ public class FocusGuardService extends AccessibilityService {
         if (desc != null) {
             String s = desc.toString().toLowerCase();
             if (s.contains("from web") || 
+                s.contains("search the web") ||
+                s.contains("search web") ||
+                s.contains("web search") ||
                 s.contains("ওয়েব থেকে") || s.contains("ওয়েব থেকে") ||
                 s.contains("ওয়েব হতে") || s.contains("ওয়েব হতে") ||
+                s.contains("ওয়েবে খুঁজুন") || s.contains("ওয়েব অনুসন্ধান") ||
                 s.contains("वेब से") || 
                 s.contains("desde la web") || s.contains("de la web") ||
                 s.contains("da web")) return true;
@@ -1024,8 +1045,9 @@ public class FocusGuardService extends AccessibilityService {
         
         boolean hasFromWeb = false;
         String[] webTerms = {
-            "from web", "ওয়েব থেকে", "ওয়েব থেকে", "ওয়েব হতে", "ওয়েব হতে", "वेब से", 
-            "desde la web", "de la web", "da web"
+            "from web", "search the web", "search web", "web search",
+            "ওয়েব থেকে", "ওয়েব থেকে", "ওয়েব হতে", "ওয়েব হতে", "ওয়েবে খুঁজুন", "ওয়েব অনুসন্ধান",
+            "वेब से", "desde la web", "de la web", "da web"
         };
         for (String term : webTerms) {
             List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(term);
