@@ -141,7 +141,13 @@ public class FocusGuardService extends AccessibilityService {
 
         // 2. ISOLATION & SESSION TRACKING
         if (!isGoogleDocsPackage(pkgName) && !isMonitoredSearchPackage(pkgName)) {
-            if (hasLeftDocsToAnotherApp(event, eventType, pkgName)) {
+            boolean hasDocsSessionOrOverlay = (lastGoogleDocsActiveTime > 0L) ||
+                                              isWebGuardActiveFlag ||
+                                              isFlashCurtainAttached ||
+                                              isFromWebInterceptAttached ||
+                                              isLoadingShieldAttached;
+
+            if (hasDocsSessionOrOverlay && hasLeftDocsToAnotherApp(event, eventType, pkgName)) {
                 Log.d(TAG, "leftDocsApp true for pkg=" + pkgName + " eventType=" + eventType);
                 lastGoogleDocsActiveTime = 0L;
                 lastDocsClickTime = 0L;
