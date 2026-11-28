@@ -140,10 +140,12 @@ public class FocusGuardService extends AccessibilityService {
         int eventType = event.getEventType();
 
         // 2. ISOLATION & SESSION TRACKING
-        if (!isGoogleDocsPackage(pkgName) && !isMonitoredSearchPackage(pkgName)) {
+        // Never dismiss the black curtain on app/launcher/recents transitions;
+        // only the 10-second hold (or service shutdown) may remove it.
+        if (!isFlashCurtainAttached && flashCurtainView == null &&
+            !isGoogleDocsPackage(pkgName) && !isMonitoredSearchPackage(pkgName)) {
             boolean hasDocsSessionOrOverlay = (lastGoogleDocsActiveTime > 0L) ||
                                               isWebGuardActiveFlag ||
-                                              isFlashCurtainAttached ||
                                               isFromWebInterceptAttached ||
                                               isLoadingShieldAttached;
 
@@ -152,7 +154,6 @@ public class FocusGuardService extends AccessibilityService {
                 lastGoogleDocsActiveTime = 0L;
                 lastDocsClickTime = 0L;
                 stopWebGuardLoop();
-                dismissZeroFlashCurtain();
                 destroyFromWebIntercept();
                 if (isLoadingShieldAttached) {
                     destroyLoadingBarShield();
